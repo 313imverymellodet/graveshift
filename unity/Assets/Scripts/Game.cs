@@ -14,7 +14,7 @@ public class Game : MonoBehaviour
     public Camera Cam;
     public Hero Hero;
     public float RunTime;
-    public int Level = 1, Xp, RunGold, Loop;
+    public int Level = 1, Xp, RunGold, Loop, RunCandy;
     public bool AutoPlay, Dev;
     int pendingLevels, runKills;
     bool revived;
@@ -48,6 +48,7 @@ public class Game : MonoBehaviour
         DevCam.Install(Dev);
         AutoPlay = url.Contains("bot=1");
         if (Dev && url.Contains("fresh=1")) Save = new SaveData();
+        if (Dev && url.Contains("rich=1")) Save.candy = Mathf.Max(Save.candy, 999);
         var sm = System.Text.RegularExpressions.Regex.Match(url, @"speed=(\d+)");
         if (Dev && sm.Success) Time.timeScale = Mathf.Clamp(int.Parse(sm.Groups[1].Value), 1, 8);
 
@@ -211,8 +212,58 @@ public class Game : MonoBehaviour
         for (int i = 0; i < 8; i++) Put("candle-multiple", 1.4f, Polar(i / 8f * Mathf.PI * 2f, 2.6f) + new Vector3(0, 0, 3.2f), R() * 360f);
         Kit.FloorQuad("altarGlow", Kit.Glow, Kit.A(Kit.Hex("#ffb56b"), 0.3f), 7f, map, new Vector3(0, 0, 3.2f), 0.02f);
 
+        if (Spooky.On) SpookyDecor(rng);
+
         // merge the static set into a handful of draw calls
         StaticBatchingUtility.Combine(map.gameObject);
+    }
+
+    // Spooktober dressing: lit jack-o'-lanterns, a bubbling cauldron at the altar, open coffins, candy buckets.
+    void SpookyDecor(System.Random rng)
+    {
+        float R() => (float)rng.NextDouble();
+        GameObject Prop(string m, float h, Vector3 p, float yaw, float obstacle)
+        {
+            var go = Kit.Spawn("Spooky/" + m, 1f, map, p, yaw);
+            var b = Kit.WorldBounds(go);
+            go.transform.localScale = Vector3.one * (h / Mathf.Max(0.01f, b.size.y));
+            if (obstacle > 0) Obstacles.Add(p, obstacle);
+            return go;
+        }
+        // cauldron on the altar's left, candy bucket on the right
+        Prop("cauldron", 1.1f, new Vector3(-2.2f, 0, 4.4f), 30, 0.55f);
+        Kit.FloorQuad("cauldronGlow", Kit.Glow, Kit.A(Kit.Hex("#7CFF6B"), 0.4f), 4.5f, map, new Vector3(-2.2f, 0, 4.4f), 0.03f);
+        Prop("candyBucket", 0.7f, new Vector3(2.2f, 0, 4.4f), -30, 0.35f);
+        for (int i = 0; i < 26; i++)
+        {
+            var p = new Vector3(Mathf.Cos(R() * 6.283f), 0, Mathf.Sin(R() * 6.283f)) * (5f + R() * 23f);
+            p = Quaternion.Euler(0, R() * 360f, 0) * p;
+            if (Obstacles.Blocked(p, 1.0f)) continue;
+            bool big = i % 3 == 0;
+            Prop(big ? "jackolantern_big" : "jackolantern_small", big ? 0.95f : 0.6f, p, R() * 360f, big ? 0.45f : 0);
+            Kit.FloorQuad("jackGlow", Kit.Glow, Kit.A(Kit.Hex("#FF9A3C"), 0.42f), big ? 3.4f : 2.4f, map, p, 0.03f);
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            var p = new Vector3(Mathf.Cos(i * 1.047f + 0.4f), 0, Mathf.Sin(i * 1.047f + 0.4f)) * (10f + R() * 14f);
+            if (Obstacles.Blocked(p, 1.3f)) continue;
+            bool a = R() < 0.5f;
+            float yaw = R() * 360f;
+            Prop(a ? "coffinA_bottom" : "coffinB_bottom", 0.45f, p, yaw, 0.6f);
+            var lid = Prop(a ? "coffinA_top" : "coffinB_top", 0.18f, p + Quaternion.Euler(0, yaw, 0) * new Vector3(0.9f, 0, 0), yaw + 25f, 0);
+        }
+        for (int i = 0; i < 8; i++)
+        {
+            var p = new Vector3(Mathf.Cos(R() * 6.283f), 0, Mathf.Sin(R() * 6.283f)) * (8f + R() * 20f);
+            if (Obstacles.Blocked(p, 1.0f)) continue;
+            Prop(new[] { "treeA_graveyard", "treeB_graveyard", "treeC_graveyard", "treeD_graveyard" }[i % 4], 3.2f + R() * 1.6f, p, R() * 360f, 0.35f);
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            var p = new Vector3(Mathf.Cos(R() * 6.283f), 0, Mathf.Sin(R() * 6.283f)) * (6f + R() * 20f);
+            if (Obstacles.Blocked(p, 0.6f)) continue;
+            Prop(i % 2 == 0 ? "candleBundle" : "pumpkinSmall", i % 2 == 0 ? 0.55f : 0.45f, p, R() * 360f, 0);
+        }
     }
 
     // ======================================================================
@@ -223,6 +274,7 @@ public class Game : MonoBehaviour
         Time.timeScale = Dev && Application.absoluteURL.Contains("speed=") ? Time.timeScale : 1f;
         Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll();
         Hero.ResetRun();
+        Hero.ApplyHat(Save.hat);
         Horde.I.Attract = true;
         for (int i = 0; i < 7; i++)
             Horde.I.Spawn(i % 3 == 0 ? EType.Skeleton : EType.Zombie, new Vector3(Mathf.Cos(i) * 7f, 0, Mathf.Sin(i) * 7f), false);
@@ -232,6 +284,8 @@ public class Game : MonoBehaviour
         if (AutoPlay) StartCoroutine(AutoStart());
     }
 
+    IEnumerator DevBossSoon() { yield return new WaitForSeconds(3f); Horde.I.DevBoss(EType.BossPumpkin); }
+
     IEnumerator AutoStart() { yield return new WaitForSecondsRealtime(1.5f); if (State == S.Menu) StartRun(); }
 
     public void StartRun()
@@ -240,7 +294,7 @@ public class Game : MonoBehaviour
         Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll();
         Horde.I.Attract = false;
         Hero.ResetRun();
-        RunTime = 0; Level = 1; Xp = 0; RunGold = 0; pendingLevels = 0; revived = false;
+        RunTime = 0; Level = 1; Xp = 0; RunGold = 0; RunCandy = 0; pendingLevels = 0; revived = false;
         A.Lv[Up.Blaster] = 1;
         State = S.Playing;
         if (!(Dev && Application.absoluteURL.Contains("speed="))) Time.timeScale = 1f;
@@ -249,6 +303,7 @@ public class Game : MonoBehaviour
         Sfx.I.StartMusic();
         WebBridge.Gameplay(true);
         WebBridge.Event("run_start", Save.runs);
+        if (Dev && Application.absoluteURL.Contains("boss=pk")) StartCoroutine(DevBossSoon());
     }
 
     public void Pause()
@@ -395,12 +450,14 @@ public class Game : MonoBehaviour
     }
 
     int bankedGold;
+    public int lastCandy;
     IEnumerator ShowEnd(bool won, float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         Time.timeScale = 1f;
         int earned = Mathf.RoundToInt(RunGold * GoldMult) + (won ? 50 : 0);
         Save.gold += earned; bankedGold = earned; RunGold = 0;
+        Save.candy += RunCandy; lastCandy = RunCandy; RunCandy = 0;
         Save.runs++;
         if (won) Save.wins++;
         if (RunTime > Save.bestTime) Save.bestTime = Mathf.FloorToInt(RunTime);

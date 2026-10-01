@@ -152,7 +152,7 @@ public class Fx : MonoBehaviour
 public class Pickups : MonoBehaviour
 {
     public static Pickups I;
-    enum K { Xp, Coin, Potion, Chest }
+    enum K { Xp, Coin, Potion, Chest, Candy }
     class G { public K kind; public Transform t; public SpriteRenderer sr; public int value; public bool flying; public float speed, bob; }
     readonly List<G> live = new List<G>();
     readonly Dictionary<K, Stack<G>> pool = new Dictionary<K, Stack<G>>();
@@ -177,6 +177,18 @@ public class Pickups : MonoBehaviour
                 glow.transform.SetParent(go.transform, false);
                 glow.sprite = Fx.Glow; glow.transform.localScale = Vector3.one * 2.4f; glow.sortingOrder = -1;
                 g.t = go.transform;
+            }
+            else if (k == K.Candy)
+            {
+                var c = Kit.Spawn(Spooky.Candies[UnityEngine.Random.Range(0, Spooky.Candies.Length)], 1f, transform);
+                var b = Kit.WorldBounds(c);
+                c.transform.localScale = Vector3.one * (0.55f / Mathf.Max(0.01f, Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z))));
+                g.t = c.transform;
+                var glow = new GameObject("glow").AddComponent<SpriteRenderer>();
+                glow.transform.SetParent(g.t, false);
+                glow.sprite = Fx.Glow; glow.transform.localScale = Vector3.one * (1.6f / c.transform.localScale.x);
+                glow.transform.localPosition = new Vector3(0, 0.02f, 0); glow.transform.localRotation = Quaternion.Euler(90, 0, 0);
+                glow.color = Kit.A(Kit.Hex("#FF8C42"), 0.55f);
             }
             else
             {
@@ -226,6 +238,11 @@ public class Pickups : MonoBehaviour
     }
 
     public void DropPotion(Vector3 pos) => Get(K.Potion, pos).value = 30;
+    public void DropCandy(Vector3 pos, int n)
+    {
+        for (int i = 0; i < n; i++)
+            Get(K.Candy, pos + UnityEngine.Random.insideUnitSphere * Mathf.Min(0.35f * n, 2.5f)).value = 1;
+    }
     public void DropChest(Vector3 pos) => Get(K.Chest, pos).value = 1;
 
     public Vector3? NearestGem(Vector3 p, float maxR)
@@ -240,7 +257,7 @@ public class Pickups : MonoBehaviour
         return best != null ? best.t.position : (Vector3?)null;
     }
 
-    public void VacuumAll() { foreach (var g in live) if (g.kind == K.Xp || g.kind == K.Coin) g.flying = true; }
+    public void VacuumAll() { foreach (var g in live) if (g.kind == K.Xp || g.kind == K.Coin || g.kind == K.Candy) g.flying = true; }
 
     public void Clear()
     {
@@ -287,6 +304,7 @@ public class Pickups : MonoBehaviour
             case K.Coin: Game.I.RunGold += 1; Sfx.I.Coin(); break;
             case K.Potion: Game.I.Hero.Heal(g.value); Sfx.I.Heal(); UI.I.Float(Game.I.Hero.transform.position + Vector3.up * 2f, "+" + g.value + " HP", Kit.Hex("#FF6B6B")); break;
             case K.Chest: Game.I.OpenChest(); break;
+            case K.Candy: Game.I.RunCandy += g.value; Sfx.I.Gem(); break;
         }
     }
 }

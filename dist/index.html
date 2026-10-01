@@ -88,9 +88,9 @@
       var fill = document.getElementById("fill"), err = document.getElementById("err");
       var buildUrl = "Build";
       var config = {
-        dataUrl: buildUrl + "/a2564a104aad30628a94d761417349c5.data.unityweb",
+        dataUrl: buildUrl + "/48972413526aa774186e6d9ca6e6c1d6.data.unityweb",
         frameworkUrl: buildUrl + "/83d7436564ba5299b994e3df66e2a0d4.framework.js.unityweb",
-        codeUrl: buildUrl + "/625ab434d8fe8d381348a996fbef361d.wasm.unityweb",
+        codeUrl: buildUrl + "/8eec20567a2e2da7c8f30708c713fc24.wasm.unityweb",
         streamingAssetsUrl: "StreamingAssets",
         autoSyncPersistentDataPath: true,
         companyName: "GraveShift",
@@ -100,7 +100,7 @@
         showBanner: function (msg, type) { if (type === "error") { err.style.display = "block"; err.textContent = msg; } console.warn(msg); }
       };
       var s = document.createElement("script");
-      s.src = buildUrl + "/2f97812de74809d3568a01ab21103a23.loader.js";
+      s.src = buildUrl + "/676f31e2b7d6d4a6638d41fab3ac3681.loader.js";
       s.onload = function () {
         try { window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.game.loadingStart(); } catch (e) {}
         createUnityInstance(canvas, config, function (p) { fill.style.width = Math.round(8 + p * 92) + "%"; })

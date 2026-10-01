@@ -12,7 +12,9 @@ public class KenneyImport : AssetPostprocessor
         mi.importCameras = false;
         mi.importLights = false;
         mi.importBlendShapes = false;
-        if (assetPath.Contains("/Characters/"))
+        string file = System.IO.Path.GetFileName(assetPath);
+        bool kayRig = assetPath.Contains("/KaySkel/") && (file.StartsWith("Skeleton_Minion") || file.StartsWith("Skeleton_Rogue") || file.StartsWith("Skeleton_Warrior") || file.StartsWith("Skeleton_Mage") || file.StartsWith("Rig_Medium"));
+        if (assetPath.Contains("/Characters/") || kayRig)
         {
             mi.animationType = ModelImporterAnimationType.Legacy;
             mi.importAnimation = true;
@@ -26,7 +28,7 @@ public class KenneyImport : AssetPostprocessor
     }
 
     // Bump to force every Kenney asset to reimport with these rules.
-    public override uint GetVersion() => 2;
+    public override uint GetVersion() => 3;
 
     void OnPreprocessTexture()
     {

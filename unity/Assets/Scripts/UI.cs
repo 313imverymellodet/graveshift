@@ -20,7 +20,7 @@ public class UI : MonoBehaviour
 
     // hud
     RectTransform xpFill, hpBar, hpFill, bossBar, bossFill;
-    Text lvText, timerText, killText, goldText, bossName, bannerText;
+    Text lvText, timerText, killText, goldText, bossName, bannerText, candyText;
     Image vignette;
     float bannerT, vignetteT;
 
@@ -139,6 +139,8 @@ public class UI : MonoBehaviour
         var skull = Txt(hud, "KILLS", 22, new Vector2(1, 1), new Vector2(-150, -150), new Color(1, 1, 1, 0.6f), TextAnchor.MiddleRight, 260);
         goldText = Txt(hud, "0", 38, new Vector2(0, 1), new Vector2(170, -110), Gold, TextAnchor.MiddleLeft, 260);
         Outline(goldText, 2);
+        candyText = Txt(hud, "", 34, new Vector2(0, 1), new Vector2(170, -165), Kit.Hex("#FF9A3C"), TextAnchor.MiddleLeft, 300);
+        Outline(candyText, 2);
         Img(hud, Icon("coin"), new Vector2(0, 1), new Vector2(60, -110), new Vector2(64, 64));
 
         Btn(hud, "II", new Vector2(1, 1), new Vector2(-60, -200), new Vector2(90, 90), new Color(0, 0, 0, 0.5f), Color.white, () => Game.I.Pause(), 40);
@@ -234,6 +236,15 @@ public class UI : MonoBehaviour
         var play = Btn(s, "PLAY", new Vector2(.5f, 0), new Vector2(0, 520), new Vector2(620, 180), Toxic, Ink, () => g.StartRun(), 84);
         StartCoroutine(Pulse(play.transform));
         Btn(s, "SHOP", new Vector2(.5f, 0), new Vector2(-160, 330), new Vector2(300, 120), new Color(1, 1, 1, 0.14f), Gold, ShowShop, 46);
+        if (Spooky.On)
+        {
+            // Spooktober banner + candy shop
+            var pill = Box(s, new Vector2(.5f, 1), new Vector2(0, -820), new Vector2(760, 96), Kit.A(Kit.Hex("#FF7A1A"), 0.9f));
+            var pt = Txt(pill, "SPOOKTOBER EVENT  -  " + g.Save.candy + " CANDY", 38, new Vector2(.5f, .5f), Vector2.zero, Kit.Hex("#1a0d05"), TextAnchor.MiddleCenter, 760);
+            pt.fontStyle = FontStyle.Bold;
+            StartCoroutine(Pulse(pill));
+            Btn(s, "CANDY SHOP", new Vector2(.5f, 0), new Vector2(0, 760), new Vector2(460, 110), Kit.Hex("#FF7A1A"), Ink, ShowCandyShop, 42);
+        }
         Btn(s, g.Save.muted ? "SOUND OFF" : "SOUND ON", new Vector2(.5f, 0), new Vector2(160, 330), new Vector2(300, 120), new Color(1, 1, 1, 0.14f), Bone, () => { g.ToggleMute(); ShowMenu(); }, 36);
         var goldRow = Txt(s, g.Save.gold + " GOLD", 40, new Vector2(.5f, 0), new Vector2(0, 220), Gold, TextAnchor.MiddleCenter, 600);
         Outline(goldRow, 2);
@@ -243,6 +254,36 @@ public class UI : MonoBehaviour
     IEnumerator Pulse(Transform t)
     {
         while (t) { t.localScale = Vector3.one * (1f + Mathf.Sin(Time.unscaledTime * 4f) * 0.035f); yield return null; }
+    }
+
+    public void ShowCandyShop()
+    {
+        var s = Screen();
+        var g = Game.I;
+        Title(s, "CANDY SHOP", -200, 96, Kit.Hex("#FF9A3C"));
+        Txt(s, g.Save.candy + " CANDY", 46, new Vector2(.5f, 1), new Vector2(0, -310), Kit.Hex("#FF9A3C"));
+        Txt(s, "Undead drop candy all October. The Pumpkin King drops a sackful.", 30, new Vector2(.5f, 1), new Vector2(0, -380), new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter, 1000);
+        for (int i = 0; i < Spooky.Hats.Length; i++)
+        {
+            var h = Spooky.Hats[i];
+            bool owned = g.Save.hatsOwned.Contains(h.id + ";"), worn = g.Save.hat == h.id;
+            var row = Box(s, new Vector2(.5f, 1), new Vector2(0, -540 - i * 210), new Vector2(900, 180), new Color(1, 1, 1, 0.08f));
+            Txt(row, h.name, 48, new Vector2(0, .5f), new Vector2(260, 24), Bone, TextAnchor.MiddleLeft, 420);
+            Txt(row, owned ? (worn ? "WEARING" : "OWNED") : h.cost + " CANDY", 30, new Vector2(0, .5f), new Vector2(260, -30), owned ? Toxic : Kit.Hex("#FF9A3C"), TextAnchor.MiddleLeft, 420);
+            bool afford = g.Save.candy >= h.cost;
+            string label = worn ? "TAKE OFF" : owned ? "WEAR" : "BUY";
+            Color bg = worn ? new Color(1, 1, 1, 0.15f) : owned || afford ? Kit.Hex("#FF7A1A") : new Color(1, 1, 1, 0.1f);
+            var hid = h.id; int cost = h.cost;
+            Btn(row, label, new Vector2(1, .5f), new Vector2(-160, 0), new Vector2(260, 110), bg, worn || (!owned && !afford) ? Bone : Ink, () =>
+            {
+                if (g.Save.hat == hid) g.Save.hat = "";
+                else if (g.Save.hatsOwned.Contains(hid + ";")) g.Save.hat = hid;
+                else if (g.Save.candy >= cost) { g.Save.candy -= cost; g.Save.hatsOwned += hid + ";"; g.Save.hat = hid; Sfx.I.LevelUp(); }
+                else return;
+                g.Persist(); g.Hero.ApplyHat(g.Save.hat); ShowCandyShop();
+            }, 40);
+        }
+        Btn(s, "BACK", new Vector2(.5f, 0), new Vector2(0, 200), new Vector2(420, 130), new Color(1, 1, 1, 0.15f), Bone, ShowMenu, 50);
     }
 
     public void ShowShop()
@@ -321,6 +362,8 @@ public class UI : MonoBehaviour
             var v = Txt(box, vals[i], 64, new Vector2(.5f, .5f), new Vector2(0, -20), i == 3 ? Gold : Bone);
             StartCoroutine(Pop(box, 0.1f * i));
         }
+        if (Spooky.On && Game.I.lastCandy > 0)
+            Txt(s, "+" + Game.I.lastCandy + " CANDY", 44, new Vector2(.5f, 1), new Vector2(0, -985), Kit.Hex("#FF9A3C"));
         float y = 640;
         if (canRevive)
         {
@@ -355,6 +398,7 @@ public class UI : MonoBehaviour
             timerText.color = left < 30 ? Color.Lerp(Bone, Gold, Mathf.PingPong(Time.unscaledTime * 3, 1)) : Bone;
             killText.text = Horde.I.Kills.ToString();
             goldText.text = g.RunGold.ToString();
+            candyText.text = Spooky.On ? g.RunCandy + " CANDY" : "";
 
             var hp = g.Hero;
             var sp = g.Cam.WorldToScreenPoint(hp.transform.position + Vector3.down * 0.25f);

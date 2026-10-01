@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum EType { Zombie, Skeleton, Ghost, Vampire, Brute, BossZombie, BossVampire, BossOrc }
+public enum EType { Zombie, Skeleton, Ghost, Vampire, Brute, BossZombie, BossVampire, BossOrc, Mage, Pumpkin, BossPumpkin }
 
 public class EDef
 {
@@ -11,6 +11,10 @@ public class EDef
     public int xp;
     public Color tint = Color.white;
     public bool ghost, boss;
+    public string[] kay;            // KayKit Rig_Medium variants (animated by the shared clip library)
+    public string weaponR, weaponL;
+    public bool proc;               // rigid prop model, animated in code (hops / sways)
+    public float height;            // target height for kay/proc models
 }
 
 public enum Up { Blaster, Scatter, Pumpkins, Tombstones, Grenades, Aura, Boots, Heart, Magnet, Candle, Skull, Armor }
@@ -32,10 +36,13 @@ public static class Defs
     public static readonly Dictionary<EType, EDef> E = new Dictionary<EType, EDef>
     {
         [EType.Zombie]      = new EDef { name = "Zombie", model = "Characters/character-zombie", hp = 12, speed = 1.7f, dmg = 8, radius = 0.42f, scale = 1.45f, xp = 1 },
-        [EType.Skeleton]    = new EDef { name = "Skeleton", model = "Characters/character-skeleton", hp = 8, speed = 2.9f, dmg = 6, radius = 0.4f, scale = 1.4f, xp = 1 },
+        [EType.Skeleton]    = new EDef { name = "Skeleton", model = "KaySkel/Skeleton_Minion", kay = new[] { "KaySkel/Skeleton_Minion", "KaySkel/Skeleton_Minion", "KaySkel/Skeleton_Rogue" }, weaponR = "KaySkel/Skeleton_Blade", height = 1.3f, hp = 8, speed = 2.9f, dmg = 6, radius = 0.4f, scale = 1.4f, xp = 1 },
         [EType.Ghost]       = new EDef { name = "Ghost", model = "Characters/character-ghost", hp = 16, speed = 2.1f, dmg = 9, radius = 0.42f, scale = 1.45f, xp = 2, ghost = true, tint = new Color(0.75f, 0.9f, 1.25f) },
         [EType.Vampire]     = new EDef { name = "Vampire", model = "Characters/character-vampire", hp = 45, speed = 2.5f, dmg = 12, radius = 0.45f, scale = 1.55f, xp = 5 },
-        [EType.Brute]       = new EDef { name = "Brute", model = "Dungeon/Characters/character-orc", hp = 80, speed = 1.35f, dmg = 18, radius = 0.6f, scale = 1.9f, xp = 7 },
+        [EType.Brute]       = new EDef { name = "Bone Brute", model = "KaySkel/Skeleton_Warrior", kay = new[] { "KaySkel/Skeleton_Warrior" }, weaponR = "KaySkel/Skeleton_Axe", weaponL = "KaySkel/Skeleton_Shield_Large_B", height = 1.75f, hp = 80, speed = 1.35f, dmg = 18, radius = 0.6f, scale = 1.9f, xp = 7 },
+        [EType.Mage]        = new EDef { name = "Bone Mage", model = "KaySkel/Skeleton_Mage", kay = new[] { "KaySkel/Skeleton_Mage" }, weaponR = "KaySkel/Skeleton_Staff", height = 1.45f, hp = 28, speed = 2.0f, dmg = 14, radius = 0.42f, scale = 1.45f, xp = 4 },
+        [EType.Pumpkin]     = new EDef { name = "Jack-o'-Hopper", model = "Spooky/jackolantern_small", proc = true, height = 0.75f, hp = 10, speed = 3.1f, dmg = 7, radius = 0.38f, scale = 1f, xp = 1 },
+        [EType.BossPumpkin] = new EDef { name = "THE PUMPKIN KING", model = "Spooky/character_jack", proc = true, height = 4.4f, hp = 2200, speed = 1.55f, dmg = 28, radius = 1.15f, scale = 1f, xp = 100, boss = true },
         [EType.BossZombie]  = new EDef { name = "ROTTING GIANT", model = "Characters/character-zombie", hp = 1400, speed = 1.25f, dmg = 25, radius = 1.2f, scale = 4.2f, xp = 60, boss = true, tint = new Color(0.8f, 1.15f, 0.8f) },
         [EType.BossVampire] = new EDef { name = "COUNT NOCTIS", model = "Characters/character-vampire", hp = 3200, speed = 1.9f, dmg = 30, radius = 1.0f, scale = 3.6f, xp = 120, boss = true, tint = new Color(1.2f, 0.75f, 0.8f) },
         [EType.BossOrc]     = new EDef { name = "ORC WARLORD", model = "Dungeon/Characters/character-orc", hp = 7000, speed = 1.6f, dmg = 38, radius = 1.3f, scale = 4.6f, xp = 200, boss = true, tint = new Color(1.1f, 0.85f, 0.7f) },
@@ -74,4 +81,8 @@ public class SaveData
     public int[] shop = new int[5];
     public bool muted;
     public bool tut;
+    // spooktober
+    public int candy;
+    public string hatsOwned = "";
+    public string hat = "";
 }

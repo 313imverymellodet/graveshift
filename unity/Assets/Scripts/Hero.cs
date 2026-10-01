@@ -41,6 +41,33 @@ public class Hero : MonoBehaviour
         return h;
     }
 
+    GameObject hatGo;
+    public void ApplyHat(string id)
+    {
+        if (hatGo) Destroy(hatGo);
+        var h = Spooky.HatById(id);
+        if (h == null) return;
+        Transform head = null;
+        foreach (var t in model.GetComponentsInChildren<Transform>()) if (t.name == "head") { head = t; break; }
+        if (!head) return;
+        hatGo = Spooky.Part(h.model, h.part);
+        if (!hatGo) return;
+        // the head is a bone with no mesh of its own, so size from the whole body: chibi heads are ~45% of height
+        var body = Kit.WorldBounds(model.gameObject);
+        float H = body.size.y, top = body.max.y;
+        var b = Kit.WorldBounds(hatGo);
+        bool pumpkin = id == "pumpkin";
+        float want = H * (pumpkin ? 0.84f : 0.62f * h.size / 1.5f);   // the pumpkin swallows the keeper's own head and hat
+        hatGo.transform.localScale = Vector3.one * (want / Mathf.Max(0.01f, Mathf.Max(b.size.x, b.size.z)));
+        b = Kit.WorldBounds(hatGo);
+        var hp = head.position;
+        float y = pumpkin ? (top - H * 0.17f) - b.center.y : (top - b.size.y * 0.22f) - b.min.y;
+        hatGo.transform.position += new Vector3(hp.x - b.center.x, y + h.lift, hp.z - b.center.z);
+        hatGo.transform.SetParent(head, true);
+        foreach (var r in hatGo.GetComponentsInChildren<Renderer>()) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+        rends = model.GetComponentsInChildren<Renderer>();
+    }
+
     public void ResetRun()
     {
         MaxHp = Hp = Game.I.BaseHp;
@@ -57,6 +84,7 @@ public class Hero : MonoBehaviour
     public void Hurt(float dmg)
     {
         if (iframe > 0 || Game.I.State != Game.S.Playing) return;
+        if (Game.I.Dev && Application.absoluteURL.Contains("god=1")) return;
         dmg *= Game.I.ArmorMult;
         Hp -= dmg;
         iframe = 0.55f;

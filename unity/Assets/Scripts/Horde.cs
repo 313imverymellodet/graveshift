@@ -108,6 +108,10 @@ public class Enemy
     public bool alive;
     public int id;
     public float baseY;
+    // animation names (Kenney minis vs KayKit Rig_Medium) and rigid-prop motion
+    public string cWalk = "walk", cDie = "die", cAtk = "attack-melee-right", cRise, cHit;
+    public float hitCd, phase;
+    public bool proc;
 }
 
 public class Horde : MonoBehaviour
@@ -195,10 +199,33 @@ public class Horde : MonoBehaviour
         else
         {
             e = new Enemy { type = type, def = def, mpb = new MaterialPropertyBlock() };
-            var go = Kit.Spawn(def.model, def.scale, transform);
+            GameObject go;
+            if (def.kay != null)
+            {
+                var variant = def.kay[UnityEngine.Random.Range(0, def.kay.Length)];
+                go = KayRig.Create(variant, def.height, transform, out e.anim, out var sc, def.weaponR, def.weaponL);
+                def.scale = sc;
+                e.cWalk = def.speed >= 2.5f ? "Running_A" : "Walking_A";
+                e.cDie = "Death_A"; e.cAtk = "Throw"; e.cRise = "Spawn_Ground"; e.cHit = "Hit_A";
+            }
+            else if (def.proc)
+            {
+                go = Kit.Spawn(def.model, 1f, transform);
+                var b = Kit.WorldBounds(go);
+                def.scale = def.height / Mathf.Max(0.01f, b.size.y);
+                e.proc = true;
+                if (def.boss)
+                {
+                    var glow = new GameObject("glow").AddComponent<SpriteRenderer>();
+                    glow.sprite = Fx.Glow; glow.color = Kit.A(Kit.Hex("#FF8C42"), 0.45f);
+                    glow.transform.SetParent(go.transform, false); glow.transform.localPosition = new Vector3(0, 0.05f, 0);
+                    glow.transform.localRotation = Quaternion.Euler(90, 0, 0); glow.transform.localScale = Vector3.one * 1.6f;
+                }
+            }
+            else go = Kit.Spawn(def.model, def.scale, transform);
             e.t = go.transform;
             e.model = go.transform.GetChild(0);
-            e.anim = Rig.Setup(go, false);
+            if (def.kay == null && !def.proc) e.anim = Rig.Setup(go, false);
             e.baseY = e.model.localPosition.y;
             e.rends = go.GetComponentsInChildren<Renderer>();
             foreach (var r in e.rends) r.shadowCastingMode = def.boss ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -213,14 +240,21 @@ public class Horde : MonoBehaviour
         e.radius = def.radius;
         e.atkCd = 0.5f; e.flash = 0; e.special = 3f; e.special2 = 6f; e.knock = Vector3.zero; e.slow = 0;
         e.alive = true; e.dieT = 0;
-        e.rise = rise ? 0.6f : 0f;
+        bool kayRise = rise && e.cRise != null;
+        e.rise = rise ? (kayRise ? 1.05f : 0.6f) : 0f;
+        e.hitCd = 0; e.phase = UnityEngine.Random.value * 10f;
         pos.y = 0;
         e.t.position = pos;
         e.t.localScale = Vector3.one * def.scale;
-        e.model.localPosition = new Vector3(e.model.localPosition.x, e.baseY + (rise ? -0.95f : 0), e.model.localPosition.z);
+        e.model.localScale = Vector3.one;
+        e.model.localPosition = new Vector3(e.model.localPosition.x, e.baseY + (rise && !kayRise ? -0.95f : 0), e.model.localPosition.z);
         SetColor(e, def.tint);
-        e.anim.Play("walk");
-        e.anim["walk"].speed = def.boss ? 0.6f : 1f;
+        if (e.anim)
+        {
+            if (kayRise) { e.anim.Play(e.cRise); e.anim[e.cRise].speed = 1.25f; }
+            else e.anim.Play(e.cWalk);
+            e.anim[e.cWalk].speed = def.boss ? 0.6f : 1f;
+        }
         if (def.boss) Boss = e;
         if (rise) Fx.I.Dirt(pos);
         Alive.Add(e);
@@ -229,6 +263,8 @@ public class Horde : MonoBehaviour
 
     void SetColor(Enemy e, Color c)
     {
+        // material-coloured props (KayKit pumpkins) must keep their own colours: clear the override instead of painting white
+        if (e.proc && c == e.def.tint) { foreach (var r in e.rends) r.SetPropertyBlock(null); return; }
         e.mpb.SetColor(ColorId, c);
         foreach (var r in e.rends) r.SetPropertyBlock(e.mpb);
     }
@@ -243,6 +279,7 @@ public class Horde : MonoBehaviour
         if (!quiet || crit) Fx.I.DamageNumber(e.t.position + Vector3.up * (1.3f * e.def.scale / 1.45f), dmg, crit);   // AoE ticks stay silent
         if (!quiet) Sfx.I.Hit();
         if (e.hp <= 0) Kill(e);
+        else if (e.cHit != null && e.anim && !e.def.boss && e.hitCd <= 0) { e.hitCd = 0.5f; e.anim.CrossFade(e.cHit, 0.04f, PlayMode.StopSameLayer); }
     }
 
     void Kill(Enemy e)
@@ -250,15 +287,24 @@ public class Horde : MonoBehaviour
         e.alive = false;
         Alive.Remove(e);
         Kills++;
-        e.dieT = e.def.boss ? 2.2f : 1.0f;
-        e.anim.Stop("attack-melee-right");
-        e.anim.CrossFade("die", 0.08f);
+        e.dieT = e.def.boss ? 2.2f : e.cRise != null ? 1.25f : 1.0f;
+        if (e.anim)
+        {
+            if (e.anim[e.cAtk] != null) e.anim.Stop(e.cAtk);
+            if (e.cHit != null) e.anim.Stop(e.cHit);
+            e.anim.CrossFade(e.cDie, 0.08f);
+        }
         SetColor(e, e.def.tint);
         dying.Add(e);
         var p = e.t.position;
         Pickups.I.DropXp(p, e.def.xp);
         if (UnityEngine.Random.value < (e.def.boss ? 1f : 0.035f)) Pickups.I.DropCoins(p, e.def.boss ? 25 : 1);
         if (!e.def.boss && UnityEngine.Random.value < 0.006f) Pickups.I.DropPotion(p);
+        if (Spooky.On && !Attract)
+        {
+            float c = e.def.boss ? 1f : e.type == EType.Pumpkin ? 0.3f : 0.055f;
+            if (UnityEngine.Random.value < c) Pickups.I.DropCandy(p, e.def.boss ? 20 : 1);
+        }
         Fx.I.Poof(p + Vector3.up * 0.5f, e.def.ghost ? Kit.Hex("#9FE7FF") : Kit.Hex("#7CFFB2"), e.def.boss ? 3f : 1f);
         Sfx.I.EnemyDie(e.def.boss);
         if (e.def.boss)
@@ -301,9 +347,17 @@ public class Horde : MonoBehaviour
             var e = Alive[i];
             var pos = e.t.position;
 
+            if (e.hitCd > 0) e.hitCd -= dt;
             if (e.rise > 0)
             {
                 e.rise -= dt;
+                if (e.cRise != null)
+                {
+                    // KayKit skeletons claw their own way out of the dirt
+                    if (e.rise <= 0 && e.anim) e.anim.CrossFade(e.cWalk, 0.15f);
+                    if (UnityEngine.Random.value < dt * 6f) Fx.I.Dirt(pos);
+                    continue;
+                }
                 float k = 1f - Mathf.Clamp01(e.rise / 0.6f);
                 var mp = e.model.localPosition; mp.y = e.baseY + Mathf.Lerp(-0.95f, 0, k * k); e.model.localPosition = mp;
                 continue;
@@ -317,6 +371,22 @@ public class Horde : MonoBehaviour
             e.slow -= dt;
 
             if (e.def.boss && !Attract) BossBrain(e, dir, dist, dt, ref spd);
+            if (e.type == EType.Mage && !Attract) MageBrain(e, dir, dist, dt, ref spd);
+            if (e.proc)
+            {
+                // rigid models: pumpkins hop, the king lumbers and rocks side to side
+                e.phase += dt * (e.def.boss ? 2.2f : 7f);
+                var mp = e.model.localPosition;
+                if (e.def.boss) { mp.y = e.baseY + Mathf.Abs(Mathf.Sin(e.phase)) * 0.08f; e.model.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(e.phase) * 6f); }
+                else
+                {
+                    float hop = Mathf.Abs(Mathf.Sin(e.phase));
+                    mp.y = e.baseY + hop * 0.55f;
+                    e.model.localScale = new Vector3(1f + (1f - hop) * 0.15f, 1f - (1f - hop) * 0.18f, 1f + (1f - hop) * 0.15f);
+                    spd *= 0.4f + hop * 1.2f;   // lunges while airborne
+                }
+                e.model.localPosition = mp;
+            }
 
             // separation from neighbours
             Vector3 push = Vector3.zero;
@@ -353,7 +423,7 @@ public class Horde : MonoBehaviour
             if (!Attract && hero && dist < e.radius + 0.5f && e.atkCd <= 0)
             {
                 e.atkCd = e.def.boss ? 1.2f : 0.9f;
-                if (e.anim["attack-melee-right"] != null) e.anim.CrossFade("attack-melee-right", 0.05f);
+                if (e.anim && e.anim[e.cAtk] != null) e.anim.CrossFade(e.cAtk, 0.05f, PlayMode.StopSameLayer);
                 hero.Hurt(e.dmg);
             }
 
@@ -370,6 +440,7 @@ public class Horde : MonoBehaviour
         {
             var e = dying[i];
             e.dieT -= dt;
+            if (e.proc) { e.model.localScale = Vector3.one * Mathf.Clamp01(e.dieT / (e.def.boss ? 2.2f : 1f)); e.model.Rotate(0, dt * 400f, 0); }
             if (e.dieT < 0.45f)
             {
                 var mp = e.model.localPosition; mp.y -= dt * 2.2f / e.def.scale; e.model.localPosition = mp;
@@ -399,7 +470,38 @@ public class Horde : MonoBehaviour
                         Sfx.I.Slam();
                         if ((Game.I.Hero.transform.position - at).magnitude < 2.6f) Game.I.Hero.Hurt(e.dmg * 1.2f);
                     });
-                    e.anim.CrossFade("attack-melee-right", 0.05f);
+                    if (e.anim) e.anim.CrossFade(e.cAtk, 0.05f);
+                }
+                break;
+
+            case EType.BossPumpkin:
+                // pumpkin rain around the hero, then a patch of hoppers
+                if (e.special <= 0 && dist < 14f)
+                {
+                    e.special = e.hp < e.maxHp * 0.5f ? 3.4f : 4.6f;
+                    var c = hero.transform.position;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        var at = i == 0 ? c : c + new Vector3(UnityEngine.Random.Range(-4f, 4f), 0, UnityEngine.Random.Range(-4f, 4f));
+                        Fx.I.Telegraph(at, 1.8f, 1.0f + i * 0.18f, () =>
+                        {
+                            Fx.I.Shockwave(at, Kit.Hex("#FF8C42"), 4f);
+                            Fx.I.Poof(at + Vector3.up * 0.4f, Kit.Hex("#FF8C42"), 1.4f);
+                            Sfx.I.Slam();
+                            if ((Game.I.Hero.transform.position - at).magnitude < 1.8f) Game.I.Hero.Hurt(e.dmg * 0.8f);
+                        });
+                    }
+                    Fx.I.Shake(0.25f);
+                }
+                if (e.special2 <= 0)
+                {
+                    e.special2 = 9f;
+                    for (int i = 0; i < 6; i++)
+                    {
+                        float a = i / 6f * Mathf.PI * 2f;
+                        Spawn(EType.Pumpkin, e.t.position + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 2.6f, false);
+                    }
+                    Sfx.I.Roar();
                 }
                 break;
 
@@ -438,7 +540,7 @@ public class Horde : MonoBehaviour
                         Sfx.I.Slam();
                         if ((Game.I.Hero.transform.position - at).magnitude < 3.2f) Game.I.Hero.Hurt(e.dmg);
                     });
-                    e.anim.CrossFade("attack-melee-right", 0.05f);
+                    if (e.anim) e.anim.CrossFade(e.cAtk, 0.05f);
                 }
                 if (e.special2 <= 0)
                 {
@@ -447,6 +549,26 @@ public class Horde : MonoBehaviour
                     Sfx.I.Roar();
                 }
                 break;
+        }
+    }
+
+    // Bone mages keep their distance and curse the ground under the hero.
+    void MageBrain(Enemy e, Vector3 dir, float dist, float dt, ref float spd)
+    {
+        if (dist < 6f) spd = -spd * 0.6f;          // back off
+        else if (dist < 8.5f) spd *= 0.15f;        // hold range
+        e.special -= dt;
+        if (e.special <= 0 && dist < 11f)
+        {
+            e.special = UnityEngine.Random.Range(3.4f, 4.6f);
+            var at = Game.I.Hero.transform.position;
+            float dmg = e.dmg;
+            if (e.anim) e.anim.CrossFade("Use_Item", 0.05f, PlayMode.StopSameLayer);
+            Fx.I.Telegraph(at, 1.6f, 1.1f, () =>
+            {
+                Fx.I.Shockwave(at, Kit.Hex("#B07CFF"), 3.2f);
+                if ((Game.I.Hero.transform.position - at).magnitude < 1.6f) Game.I.Hero.Hurt(dmg);
+            });
         }
     }
 
@@ -464,15 +586,25 @@ public class Horde : MonoBehaviour
         }
         if (spawnAcc > 3f) spawnAcc = 3f;
 
-        if (beats == null) beats = new (float time, System.Action act)[]
+        if (beats == null)
         {
-            (100f, () => Ring(EType.Zombie, 28, 11f, "THE DEAD RISE")),
-            (180f, () => BossArrives(EType.BossZombie)),
-            (260f, () => Ring(EType.Skeleton, 32, 12f, "BONE STORM")),
-            (330f, () => Ring(EType.Ghost, 24, 10f, "WAILING HOUR")),
-            (360f, () => BossArrives(EType.BossVampire)),
-            (420f, () => BossArrives(EType.BossOrc)),
-        };
+            var list = new List<(float time, System.Action act)>
+            {
+                (100f, () => Ring(EType.Zombie, 28, 11f, "THE DEAD RISE")),
+                (180f, () => BossArrives(EType.BossZombie)),
+                (260f, () => Ring(EType.Skeleton, 32, 12f, "BONE STORM")),
+                (330f, () => Ring(EType.Ghost, 24, 10f, "WAILING HOUR")),
+                (360f, () => BossArrives(EType.BossVampire)),
+                (420f, () => BossArrives(EType.BossOrc)),
+            };
+            if (Spooky.On)
+            {
+                list.Add((140f, () => Ring(EType.Pumpkin, 22, 10f, "PUMPKIN PATCH")));
+                list.Add((235f, () => BossArrives(EType.BossPumpkin)));
+            }
+            list.Sort((a, b) => a.time.CompareTo(b.time));
+            beats = list.ToArray();
+        }
         if (nextEvent < beats.Length && t >= beats[nextEvent].time) { beats[nextEvent].act(); nextEvent++; }
     }
 
@@ -481,7 +613,10 @@ public class Horde : MonoBehaviour
     EType PickType(float t)
     {
         float z = 1f, s = t > 40 ? 0.7f : 0, g = t > 110 ? 0.45f : 0, v = t > 200 ? 0.22f : 0, b = t > 250 ? 0.16f : 0;
-        float r = UnityEngine.Random.value * (z + s + g + v + b);
+        float m = t > 150 ? 0.16f : 0, pk = Spooky.On && t > 60 ? 0.35f : 0;
+        float r = UnityEngine.Random.value * (z + s + g + v + b + m + pk);
+        if ((r -= m) < 0) return EType.Mage;
+        if ((r -= pk) < 0) return EType.Pumpkin;
         if ((r -= z) < 0) return EType.Zombie;
         if ((r -= s) < 0) return EType.Skeleton;
         if ((r -= g) < 0) return EType.Ghost;
@@ -515,6 +650,8 @@ public class Horde : MonoBehaviour
         UI.I.Banner(banner, Kit.Hex("#9CFF7A"));
         Sfx.I.Roar();
     }
+
+    public void DevBoss(EType type) => BossArrives(type);
 
     void BossArrives(EType type)
     {
