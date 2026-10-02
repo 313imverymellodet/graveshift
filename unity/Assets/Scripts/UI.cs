@@ -105,9 +105,10 @@ public class UI : MonoBehaviour
     }
     Text Txt(Transform p, string s, int size, Vector2 anchor, Vector2 pos, Color c, TextAnchor align = TextAnchor.MiddleCenter, float w = 700)
     {
+        size = Mathf.Max(size, 30);   // readable floor: Lilita below this turns to mush on phones and short desktop windows
         var rt = Rect("txt", p, anchor, pos, new Vector2(w, size * 1.4f));
         var t = rt.gameObject.AddComponent<Text>();
-        t.font = F; t.fontSize = size; t.fontStyle = FontStyle.Bold; t.alignment = align; t.color = c; t.text = s;
+        t.font = F; t.fontSize = size; t.fontStyle = FontStyle.Normal; t.alignment = align; t.color = c; t.text = s;
         t.raycastTarget = false; t.horizontalOverflow = HorizontalWrapMode.Overflow; t.verticalOverflow = VerticalWrapMode.Overflow;
         return t;
     }
@@ -115,8 +116,12 @@ public class UI : MonoBehaviour
     Button Btn(Transform p, string label, Vector2 anchor, Vector2 pos, Vector2 size, Color bg, Color fg, Action onClick, int fs = 48)
     {
         var rt = Box(p, anchor, pos, size, bg, true);
+        // raised lip so buttons read as tappable over the dark graveyard
+        var lip = Box(rt, new Vector2(.5f, 0), new Vector2(0, -8), new Vector2(size.x, 20), Color.Lerp(bg.a < 0.5f ? new Color(0, 0, 0, 0.35f) : bg, Color.black, 0.45f));
+        lip.pivot = new Vector2(.5f, 0); lip.SetAsFirstSibling();
         var b = rt.gameObject.AddComponent<Button>(); b.targetGraphic = rt.GetComponent<Image>();
         b.onClick.AddListener(() => { Sfx.I.Click(); onClick(); });
+        rt.gameObject.AddComponent<Press>();
         Txt(rt, label, fs, new Vector2(.5f, .5f), Vector2.zero, fg, TextAnchor.MiddleCenter, size.x);
         return b;
     }
@@ -225,30 +230,40 @@ public class UI : MonoBehaviour
     {
         var s = Screen(false);
         var g = Game.I;
-        var glow = Img(s, Fx.Glow, new Vector2(.5f, 1), new Vector2(0, -420), new Vector2(1100, 700));
-        glow.color = Kit.A(Toxic, 0.18f);
-        var a = Title(s, "GRAVE", -330, 200, Bone);
-        var b = Title(s, "SHIFT", -520, 200, Toxic);
-        Txt(s, "SURVIVE THE NIGHT. EVERY NIGHT.", 36, new Vector2(.5f, 1), new Vector2(0, -660), new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter, 1000);
+        // title block up top, buttons in a stack at the bottom, the middle left clear for the keeper
+        Kit.Scrim(s, true, 900, new Color(0.03f, 0.04f, 0.05f, 0.82f));
+        Kit.Scrim(s, false, 1000, new Color(0.03f, 0.04f, 0.05f, 0.88f));
+        var glow = Img(s, Fx.Glow, new Vector2(.5f, 1), new Vector2(0, -330), new Vector2(1100, 600));
+        glow.color = Kit.A(Toxic, 0.16f);
+        Title(s, "GRAVE", -210, 190, Bone);
+        Title(s, "SHIFT", -390, 190, Toxic);
+        var tag = Txt(s, "SURVIVE THE NIGHT. EVERY NIGHT.", 40, new Vector2(.5f, 1), new Vector2(0, -525), Bone, TextAnchor.MiddleCenter, 1000);
+        Outline(tag, 2);
         if (g.Save.bestTime > 0)
-            Txt(s, "BEST  " + Clock(g.Save.bestTime) + "   ·   " + g.Save.bestKills + " KILLS" + (g.Save.wins > 0 ? "   ·   " + g.Save.wins + " DAWNS" : ""), 34, new Vector2(.5f, 1), new Vector2(0, -730), Gold, TextAnchor.MiddleCenter, 1000);
+        {
+            var best = Txt(s, "BEST  " + Clock(g.Save.bestTime) + "   ·   " + g.Save.bestKills + " KILLS" + (g.Save.wins > 0 ? "   ·   " + g.Save.wins + " DAWNS" : ""), 36, new Vector2(.5f, 1), new Vector2(0, -590), Gold, TextAnchor.MiddleCenter, 1000);
+            Outline(best, 2);
+        }
 
-        var play = Btn(s, "PLAY", new Vector2(.5f, 0), new Vector2(0, 520), new Vector2(620, 180), Toxic, Ink, () => g.StartRun(), 84);
-        StartCoroutine(Pulse(play.transform));
-        Btn(s, "SHOP", new Vector2(.5f, 0), new Vector2(-160, 330), new Vector2(300, 120), new Color(1, 1, 1, 0.14f), Gold, ShowShop, 46);
+        float y = 860;
         if (Spooky.On)
         {
-            // Spooktober banner + candy shop
-            var pill = Box(s, new Vector2(.5f, 1), new Vector2(0, -820), new Vector2(760, 96), Kit.A(Kit.Hex("#FF7A1A"), 0.9f));
-            var pt = Txt(pill, "SPOOKTOBER EVENT  -  " + g.Save.candy + " CANDY", 38, new Vector2(.5f, .5f), Vector2.zero, Kit.Hex("#1a0d05"), TextAnchor.MiddleCenter, 760);
-            pt.fontStyle = FontStyle.Bold;
-            StartCoroutine(Pulse(pill));
-            Btn(s, "CANDY SHOP", new Vector2(.5f, 0), new Vector2(0, 760), new Vector2(460, 110), Kit.Hex("#FF7A1A"), Ink, ShowCandyShop, 42);
+            // the event is one tappable button: what it is, and what you have to spend
+            var ev = Btn(s, "", new Vector2(.5f, 0), new Vector2(0, y), new Vector2(720, 130), Kit.Hex("#FF7A1A"), Ink, ShowCandyShop, 40);
+            Txt(ev.transform, "SPOOKTOBER EVENT", 30, new Vector2(.5f, .5f), new Vector2(0, 26), Kit.A(Ink, 0.75f), TextAnchor.MiddleCenter, 700);
+            Txt(ev.transform, "CANDY SHOP  ·  " + g.Save.candy + " CANDY", 46, new Vector2(.5f, .5f), new Vector2(0, -16), Ink, TextAnchor.MiddleCenter, 700);
+            StartCoroutine(Pulse(ev.transform));
+            y -= 190;
         }
-        Btn(s, g.Save.muted ? "SOUND OFF" : "SOUND ON", new Vector2(.5f, 0), new Vector2(160, 330), new Vector2(300, 120), new Color(1, 1, 1, 0.14f), Bone, () => { g.ToggleMute(); ShowMenu(); }, 36);
-        var goldRow = Txt(s, g.Save.gold + " GOLD", 40, new Vector2(.5f, 0), new Vector2(0, 220), Gold, TextAnchor.MiddleCenter, 600);
-        Outline(goldRow, 2);
-        Txt(s, "Move with one thumb. Aiming is automatic.", 30, new Vector2(.5f, 0), new Vector2(0, 150), new Color(1, 1, 1, 0.55f), TextAnchor.MiddleCenter, 1000);
+        var play = Btn(s, "PLAY", new Vector2(.5f, 0), new Vector2(0, y - 10), new Vector2(720, 190), Toxic, Ink, () => g.StartRun(), 96);
+        if (!Spooky.On) StartCoroutine(Pulse(play.transform));
+        y -= 205;
+        var shop = Btn(s, "", new Vector2(.5f, 0), new Vector2(-185, y), new Vector2(350, 130), new Color(1, 1, 1, 0.16f), Gold, ShowShop, 46);
+        Txt(shop.transform, "SHOP", 46, new Vector2(.5f, .5f), new Vector2(0, 16), Gold, TextAnchor.MiddleCenter, 340);
+        Txt(shop.transform, g.Save.gold + " GOLD", 28, new Vector2(.5f, .5f), new Vector2(0, -30), Kit.A(Bone, 0.8f), TextAnchor.MiddleCenter, 340);
+        Btn(s, g.Save.muted ? "SOUND OFF" : "SOUND ON", new Vector2(.5f, 0), new Vector2(185, y), new Vector2(350, 130), new Color(1, 1, 1, 0.16f), Bone, () => { g.ToggleMute(); ShowMenu(); }, 40);
+        var hint = Txt(s, "Move with one thumb. Aiming is automatic.", 32, new Vector2(.5f, 0), new Vector2(0, y - 125), Kit.A(Bone, 0.75f), TextAnchor.MiddleCenter, 1000);
+        Outline(hint, 2);
     }
 
     IEnumerator Pulse(Transform t)
