@@ -117,7 +117,7 @@ public class Hero : MonoBehaviour
         transform.position = pos;
 
         // face the nearest threat (auto-aim), otherwise the way we walk
-        var target = playing ? Horde.I.Nearest(pos, 12f) : null;
+        var target = playing ? Horde.I.Nearest(pos, Mathf.Min(12f, Lantern.I.Reach)) : null;
         Vector3 face = target != null ? target.t.position - pos : vel;
         face.y = 0;
         if (face.sqrMagnitude > 0.01f)
@@ -155,6 +155,9 @@ public class Hero : MonoBehaviour
         var home = -p * 0.04f;
         var gem = Pickups.I.NearestGem(p, 9f);
         var greed = gem.HasValue && away.magnitude < 1.2f ? (gem.Value - p).normalized * 1.3f : Vector3.zero;
+        // a dimming lantern beats everything else: go get oil
+        var oil = Lantern.I.Fuel01 < 0.6f ? Pickups.I.NearestOil(p, 25f) : null;
+        if (oil.HasValue) greed = (oil.Value - p).normalized * 2.2f;
         var dir = away * 1.4f + tangent * (greed == Vector3.zero ? 0.8f : 0.25f) + home + greed;
         dir.y = 0;
         if (dir.sqrMagnitude < 0.01f) return Vector2.zero;

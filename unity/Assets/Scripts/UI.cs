@@ -19,7 +19,7 @@ public class UI : MonoBehaviour
     const float JoyRadius = 110f;
 
     // hud
-    RectTransform xpFill, hpBar, hpFill, bossBar, bossFill;
+    RectTransform xpFill, hpBar, hpFill, bossBar, bossFill, oilBar, oilFill;
     Text lvText, timerText, killText, goldText, bossName, bannerText, candyText;
     Image vignette;
     float bannerT, vignetteT;
@@ -153,6 +153,11 @@ public class UI : MonoBehaviour
         hpBar = Box(hud, Vector2.zero, Vector2.zero, new Vector2(120, 16), new Color(0, 0, 0, 0.6f));
         hpFill = Box(hpBar, new Vector2(0, .5f), new Vector2(3, 0), new Vector2(114, 10), Blood);
         hpFill.pivot = new Vector2(0, .5f);
+        // lantern oil gauge, right under the health bar
+        oilBar = Box(hud, Vector2.zero, Vector2.zero, new Vector2(120, 14), new Color(0, 0, 0, 0.6f));
+        oilFill = Box(oilBar, new Vector2(0, .5f), new Vector2(3, 0), new Vector2(114, 8), Kit.Hex("#FFB25A"));
+        oilFill.pivot = new Vector2(0, .5f);
+        var lamp = Img(oilBar, Icon("lantern-candle"), new Vector2(0, .5f), new Vector2(-16, 0), new Vector2(30, 30));
 
         bossBar = Box(hud, new Vector2(.5f, 1), new Vector2(0, -210), new Vector2(760, 34), new Color(0, 0, 0, 0.65f));
         bossFill = Box(bossBar, new Vector2(0, .5f), new Vector2(4, 0), new Vector2(752, 24), Blood);
@@ -237,7 +242,7 @@ public class UI : MonoBehaviour
         glow.color = Kit.A(Toxic, 0.16f);
         Title(s, "GRAVE", -210, 190, Bone);
         Title(s, "SHIFT", -390, 190, Toxic);
-        var tag = Txt(s, "SURVIVE THE NIGHT. EVERY NIGHT.", 40, new Vector2(.5f, 1), new Vector2(0, -525), Bone, TextAnchor.MiddleCenter, 1000);
+        var tag = Txt(s, "THE DARK IS HUNGRY. KEEP YOUR LANTERN LIT.", 40, new Vector2(.5f, 1), new Vector2(0, -525), Bone, TextAnchor.MiddleCenter, 1000);
         Outline(tag, 2);
         if (g.Save.bestTime > 0)
         {
@@ -419,6 +424,10 @@ public class UI : MonoBehaviour
             var sp = g.Cam.WorldToScreenPoint(hp.transform.position + Vector3.down * 0.25f);
             hpBar.position = sp;
             hpFill.sizeDelta = new Vector2(114 * Mathf.Clamp01(hp.Hp / hp.MaxHp), 10);
+            oilBar.position = sp + Vector3.down * 20f * root.lossyScale.y;
+            float fuel = Lantern.I.Fuel01;
+            oilFill.sizeDelta = new Vector2(114 * Mathf.Max(0.02f, fuel), 8);
+            oilFill.GetComponent<Image>().color = fuel < 0.22f ? Color.Lerp(Kit.Hex("#FFB25A"), Kit.Hex("#B98CFF"), Mathf.PingPong(Time.unscaledTime * 4, 1)) : Kit.Hex("#FFB25A");
             hpFill.GetComponent<Image>().color = hp.Hp / hp.MaxHp < 0.3f ? Color.Lerp(Blood, Color.white, Mathf.PingPong(Time.unscaledTime * 4, 1) * 0.5f) : Blood;
 
             var boss = Horde.I.Boss;

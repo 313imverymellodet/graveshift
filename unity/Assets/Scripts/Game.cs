@@ -78,6 +78,7 @@ public class Game : MonoBehaviour
         new GameObject("Horde").AddComponent<Horde>();
         new GameObject("Pickups").AddComponent<Pickups>();
         new GameObject("Arsenal").AddComponent<Arsenal>();
+        new GameObject("Lantern").AddComponent<Lantern>();
         new GameObject("UI").AddComponent<UI>().Init();
 
         BuildMap(1337);
@@ -272,7 +273,7 @@ public class Game : MonoBehaviour
     {
         State = S.Menu;
         Time.timeScale = Dev && Application.absoluteURL.Contains("speed=") ? Time.timeScale : 1f;
-        Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll();
+        Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll(); Lantern.I.ResetRun();
         Hero.ResetRun();
         Hero.ApplyHat(Save.hat);
         Horde.I.Attract = true;
@@ -291,7 +292,7 @@ public class Game : MonoBehaviour
     public void StartRun()
     {
         UI.I.CloseScreens();
-        Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll();
+        Horde.I.Clear(); Pickups.I.Clear(); Arsenal.I.ResetRun(); Fx.I.ClearAll(); Lantern.I.ResetRun();
         Horde.I.Attract = false;
         Hero.ResetRun();
         RunTime = 0; Level = 1; Xp = 0; RunGold = 0; RunCandy = 0; pendingLevels = 0; revived = false;
@@ -299,7 +300,7 @@ public class Game : MonoBehaviour
         State = S.Playing;
         if (!(Dev && Application.absoluteURL.Contains("speed="))) Time.timeScale = 1f;
         UI.I.ShowHud(true);
-        UI.I.Banner("SURVIVE UNTIL DAWN", Kit.Hex("#EDE6D6"));
+        UI.I.Banner("KEEP YOUR LANTERN LIT", Kit.Hex("#FFC27A"));
         Sfx.I.StartMusic();
         WebBridge.Gameplay(true);
         WebBridge.Event("run_start", Save.runs);
@@ -345,6 +346,7 @@ public class Game : MonoBehaviour
         A.Lv[u] = A.Level(u) + 1;
         A.OnLevel(u);
         if (u == Up.Heart) { Hero.MaxHp += 25; Hero.Heal(25); }
+        Lantern.I.AddOil(0.6f, false);   // every level-up makes the lantern flare
         pendingLevels--;
         WebBridge.Event("pick_" + u.ToString().ToLower(), A.Level(u));
         if (pendingLevels > 0) OpenLevelUp();
@@ -498,6 +500,7 @@ public class Game : MonoBehaviour
         UI.I.CloseScreens();
         UI.I.ShowHud(true);
         Hero.Hp = Hero.MaxHp * 0.6f;
+        Lantern.I.AddOil(99f, false);
         foreach (var e in Horde.I.Near(Hero.transform.position, 6f).ToArray()) Horde.I.Damage(e, 99999, e.t.position - Hero.transform.position, 8f, true);
         Fx.I.Shockwave(Hero.transform.position, Kit.Hex("#FFD166"), 12f);
         Sfx.I.Heal();
@@ -510,7 +513,7 @@ public class Game : MonoBehaviour
     public string ShareText()
     {
         string head = State == S.Won ? "\U0001F305 I survived until DAWN in GRAVE SHIFT!" : "\U0001FAA6 I survived " + UI.Clock(RunTime) + " in GRAVE SHIFT";
-        return head + "\n\U0001F9DF " + runKills + " undead destroyed · ⭐ LV " + Level + "\nCan you make it to dawn?";
+        return head + "\n\U0001F9DF " + runKills + " undead destroyed · \U0001F3EE " + Lantern.I.OilCollected + " oil · ⭐ LV " + Level + "\nCan you keep your lantern lit until dawn?";
     }
 
     // ======================================================================

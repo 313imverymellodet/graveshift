@@ -152,7 +152,7 @@ public class Fx : MonoBehaviour
 public class Pickups : MonoBehaviour
 {
     public static Pickups I;
-    enum K { Xp, Coin, Potion, Chest, Candy }
+    enum K { Xp, Coin, Potion, Chest, Candy, Oil }
     class G { public K kind; public Transform t; public SpriteRenderer sr; public int value; public bool flying; public float speed, bob; }
     readonly List<G> live = new List<G>();
     readonly Dictionary<K, Stack<G>> pool = new Dictionary<K, Stack<G>>();
@@ -192,14 +192,20 @@ public class Pickups : MonoBehaviour
             }
             else
             {
-                string m = k == K.Coin ? "Dungeon/coin" : k == K.Potion ? "Dungeon/potion" : "Dungeon/chest";
-                float s = k == K.Coin ? 1.0f : k == K.Potion ? 1.4f : 2.2f;
+                string m = k == K.Coin ? "Dungeon/coin" : k == K.Potion ? "Dungeon/potion" : k == K.Oil ? "Graveyard/lantern-candle" : "Dungeon/chest";
+                float s = k == K.Coin ? 1.0f : k == K.Potion ? 1.4f : k == K.Oil ? 1.6f : 2.2f;
                 g.t = Kit.Spawn(m, s, transform).transform;
                 var glow = new GameObject("glow").AddComponent<SpriteRenderer>();
                 glow.transform.SetParent(g.t, false);
                 glow.sprite = Fx.Glow; glow.transform.localScale = Vector3.one * (k == K.Chest ? 2.2f : 1.4f);
                 glow.transform.localPosition = new Vector3(0, 0.02f, 0); glow.transform.localRotation = Quaternion.Euler(90, 0, 0);
                 glow.color = k == K.Coin ? Kit.A(Kit.Hex("#FFD166"), 0.5f) : k == K.Potion ? Kit.A(Kit.Hex("#FF6B6B"), 0.6f) : Kit.A(Kit.Hex("#FFD166"), 0.8f);
+                if (k == K.Oil)
+                {
+                    // oil shines through the dark so you can go and fetch it
+                    glow.sharedMaterial = Lantern.Over; glow.sortingOrder = 60; glow.color = Kit.A(Kit.Hex("#FFB25A"), 0.95f);
+                    glow.transform.localScale = Vector3.one * 2.4f;
+                }
             }
         }
         g.flying = false; g.speed = 0; g.bob = UnityEngine.Random.value * 6f;
@@ -244,6 +250,18 @@ public class Pickups : MonoBehaviour
             Get(K.Candy, pos + UnityEngine.Random.insideUnitSphere * Mathf.Min(0.35f * n, 2.5f)).value = 1;
     }
     public void DropChest(Vector3 pos) => Get(K.Chest, pos).value = 1;
+    public void DropOil(Vector3 pos) => Get(K.Oil, pos).value = 1;
+    public Vector3? NearestOil(Vector3 p, float maxR)
+    {
+        G best = null; float bd = maxR * maxR;
+        foreach (var g in live)
+        {
+            if (g.kind != K.Oil) continue;
+            float d = (g.t.position - p).sqrMagnitude;
+            if (d < bd) { bd = d; best = g; }
+        }
+        return best != null ? best.t.position : (Vector3?)null;
+    }
 
     public Vector3? NearestGem(Vector3 p, float maxR)
     {
@@ -278,7 +296,7 @@ public class Pickups : MonoBehaviour
             var g = live[i];
             var d = hp - g.t.position; d.y = 0;
             float dist = d.magnitude;
-            if (!g.flying && (dist < mag || (g.kind == K.Chest && dist < 1.4f) || (g.kind == K.Potion && dist < 1.2f))) g.flying = true;
+            if (!g.flying && ((dist < mag && g.kind != K.Oil) || (g.kind == K.Chest && dist < 1.4f) || (g.kind == K.Potion && dist < 1.2f) || (g.kind == K.Oil && dist < 1.5f))) g.flying = true;
             if (g.flying)
             {
                 g.speed = Mathf.Min(g.speed + dt * 28f, 22f);
@@ -305,6 +323,7 @@ public class Pickups : MonoBehaviour
             case K.Potion: Game.I.Hero.Heal(g.value); Sfx.I.Heal(); UI.I.Float(Game.I.Hero.transform.position + Vector3.up * 2f, "+" + g.value + " HP", Kit.Hex("#FF6B6B")); break;
             case K.Chest: Game.I.OpenChest(); break;
             case K.Candy: Game.I.RunCandy += g.value; Sfx.I.Gem(); break;
+            case K.Oil: Lantern.I.AddOil(Lantern.OilGain, true); Sfx.I.Heal(); Fx.I.Shockwave(Game.I.Hero.transform.position, Kit.Hex("#FFC27A"), 4f); break;
         }
     }
 }
@@ -413,12 +432,13 @@ public class Arsenal : MonoBehaviour
         var muzzle = hero.Muzzle.position;
         float dm = Game.I.DmgMult, cm = Game.I.CdMult;
         var H = Horde.I;
+        float reach = Lantern.I.Reach;
 
         // --- Soul Blaster
         int lb = Level(Up.Blaster);
         if (lb > 0 && (cdBlaster -= dt) <= 0)
         {
-            var target = H.Nearest(hp, 12f);
+            var target = H.Nearest(hp, Mathf.Min(12f, reach));
             if (target != null)
             {
                 int shots = lb >= 5 ? 3 : lb >= 3 ? 2 : 1;
@@ -437,7 +457,7 @@ public class Arsenal : MonoBehaviour
         int ls = Level(Up.Scatter);
         if (ls > 0 && (cdScatter -= dt) <= 0)
         {
-            var target = H.Nearest(hp, 7f);
+            var target = H.Nearest(hp, Mathf.Min(7f, reach));
             if (target != null)
             {
                 int n = 4 + ls;
@@ -458,7 +478,10 @@ public class Arsenal : MonoBehaviour
             var b = bolts[i];
             b.life -= dt;
             b.t.position += b.vel * dt;
-            bool dead = b.life <= 0 || b.t.position.magnitude > Defs.ArenaR + 6f;
+            var fromHero = b.t.position - hp; fromHero.y = 0;
+            bool fizzle = fromHero.sqrMagnitude > (reach + 0.3f) * (reach + 0.3f);   // shots die in the dark
+            bool dead = b.life <= 0 || fizzle || b.t.position.magnitude > Defs.ArenaR + 6f;
+            if (fizzle && b.life > 0) Fx.I.Spark(b.t.position, Kit.Hex("#5A4C7A"));
             if (!dead)
                 foreach (var e in H.Near(b.t.position, 0.3f))
                 {
@@ -502,7 +525,7 @@ public class Arsenal : MonoBehaviour
             int n = 1 + (lt + 1) / 2 - (lt == 1 ? 1 : 0) + (lt >= 5 ? 1 : 0);
             for (int i = 0; i < Mathf.Max(1, n); i++)
             {
-                var target = H.Random(hp, 10f);
+                var target = H.Random(hp, Mathf.Min(10f, reach));
                 if (target == null) break;
                 StartCoroutine(Tomb(target.t.position, (28 + 10 * lt) * dm, 1.7f + 0.1f * lt, i * 0.15f));
             }
@@ -515,7 +538,7 @@ public class Arsenal : MonoBehaviour
             cdGrenade = 2.6f * (1f - 0.07f * (lg - 1)) * cm;
             for (int i = 0; i < (lg >= 4 ? 2 : 1); i++)
             {
-                var target = H.Random(hp, 9f);
+                var target = H.Random(hp, Mathf.Min(9f, reach));
                 if (target == null) break;
                 StartCoroutine(Grenade(muzzle, target.t.position, (20 + 9 * lg) * dm, 2.1f + 0.2f * lg));
             }

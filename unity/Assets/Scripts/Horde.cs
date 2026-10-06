@@ -300,6 +300,9 @@ public class Horde : MonoBehaviour
         Pickups.I.DropXp(p, e.def.xp);
         if (UnityEngine.Random.value < (e.def.boss ? 1f : 0.035f)) Pickups.I.DropCoins(p, e.def.boss ? 25 : 1);
         if (!e.def.boss && UnityEngine.Random.value < 0.006f) Pickups.I.DropPotion(p);
+        // oil: tough undead often carry some, the rabble rarely
+        float oil = e.def.boss ? 1f : (e.type == EType.Brute || e.type == EType.Mage || e.type == EType.Vampire) ? 0.14f : 0.012f;
+        if (UnityEngine.Random.value < oil) Pickups.I.DropOil(p + new Vector3(0.6f, 0, 0.4f));
         if (Spooky.On && !Attract)
         {
             float c = e.def.boss ? 1f : e.type == EType.Pumpkin ? 0.3f : 0.055f;
