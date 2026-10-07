@@ -19,8 +19,7 @@ public class UI : MonoBehaviour
     const float JoyRadius = 110f;
 
     // hud
-    RectTransform xpFill, hpBar, hpFill, bossBar, bossFill, oilBar, oilFill;
-    Text lvText, timerText, killText, goldText, bossName, bannerText, candyText;
+    Text timerText, killText, goldText, bossName, bannerText, candyText;
     Image vignette;
     float bannerT, vignetteT;
 
@@ -127,44 +126,102 @@ public class UI : MonoBehaviour
     }
 
     // ---------------------------------------------------------------- HUD
+    // HUD: XP bar + level badge across the top, vitals (heart, HP, lantern oil) top-left, counters top-right,
+    // timer + time-to-dawn centre, boss bar, and a mini HP bar over the hero that only shows when it matters.
+    HudBar xpBar, hpBar, oilBar, bossBar, miniHp;
+    RectTransform xpRow, lvBadge, heartRt, killPill, goldPill;
+    Image lvRing, lvFlash, heartGlow;
+    Text lvNum, xpText, dawnText;
+    CanvasGroup miniGroup;
+    float miniShow, lvPop, killPunch, goldPunch, heartPhase, heartHit, lastHp = -1;
+    int lastLevel = -1, lastKills = -1, lastGold = -1; float shownKills, shownGold;
+    bool bossWas;
+    static readonly Color Panel = new Color(0.04f, 0.03f, 0.07f, 0.88f), Oil = Kit.Hex("#FFB25A"), Dusk = Kit.Hex("#B98CFF");
+
+    Image Sliced(Transform p, Sprite s, Color c, float inset = 0)
+    {
+        var rt = Fill("s", p); rt.offsetMin = new Vector2(inset, inset); rt.offsetMax = new Vector2(-inset, -inset);
+        var i = rt.gameObject.AddComponent<Image>(); i.sprite = s; i.type = Image.Type.Sliced; i.color = c; i.raycastTarget = false;
+        return i;
+    }
+
+    RectTransform Pill(Vector2 anchor, Vector2 pos, Sprite icon, Color c, out Text t)
+    {
+        var rt = Rect("pill", hud, anchor, pos, new Vector2(236, 64));
+        var sh = Sliced(rt, HudArt.Round, new Color(0, 0, 0, 0.45f), -5); sh.rectTransform.anchoredPosition = new Vector2(0, -4);
+        Sliced(rt, HudArt.Round, Panel);
+        Sliced(rt, HudArt.Rim, new Color(1, 1, 1, 0.14f));
+        var ig = Img(rt, HudArt.Glow, new Vector2(0, .5f), new Vector2(38, 0), new Vector2(90, 90)); ig.color = Kit.A(c, 0.25f);
+        Img(rt, icon, new Vector2(0, .5f), new Vector2(38, 0), new Vector2(56, 56));
+        t = Txt(rt, "0", 42, new Vector2(1, .5f), new Vector2(-20, 0), c, TextAnchor.MiddleRight, 180);
+        t.rectTransform.pivot = new Vector2(1, .5f); Outline(t, 2);
+        return rt;
+    }
+
     void BuildHud()
     {
         hud = Fill("hud", root);
-        var xpBg = Box(hud, new Vector2(.5f, 1), new Vector2(0, -34), new Vector2(1020, 30), new Color(0, 0, 0, 0.55f));
-        xpBg.anchorMin = new Vector2(0, 1); xpBg.anchorMax = new Vector2(1, 1); xpBg.sizeDelta = new Vector2(-60, 30);
-        xpFill = Box(xpBg, new Vector2(0, .5f), Vector2.zero, new Vector2(0, 22), Toxic);
-        xpFill.pivot = new Vector2(0, .5f); xpFill.anchoredPosition = new Vector2(4, 0);
-        lvText = Txt(xpBg, "LV 1", 26, new Vector2(.5f, .5f), Vector2.zero, Color.white);
-        Outline(lvText, 2);
 
-        timerText = Txt(hud, "00:00", 64, new Vector2(.5f, 1), new Vector2(0, -110), Bone);
+        // ---- XP: level badge + segmented bar
+        xpRow = Rect("xprow", hud, new Vector2(.5f, 1), new Vector2(0, -66), new Vector2(1000, 44));
+        xpBar = new HudBar(xpRow, new Vector2(.5f, .5f), Vector2.zero, new Vector2(900, 34), Toxic, new Color(0.92f, 1f, 0.95f, 0.95f), 10, 0, F);
+        xpBar.Root.anchorMin = new Vector2(0, .5f); xpBar.Root.anchorMax = new Vector2(1, .5f);
+        xpBar.Root.sizeDelta = new Vector2(-84, 34); xpBar.Root.anchoredPosition = new Vector2(42, 0);
+        xpBar.RimCol = Kit.A(Toxic, 0.3f);
+        xpText = Txt(xpBar.Root, "", 30, new Vector2(1, .5f), new Vector2(-16, 0), new Color(1, 1, 1, 0.92f), TextAnchor.MiddleRight, 300);
+        xpText.rectTransform.pivot = new Vector2(1, .5f); Outline(xpText, 2);
+
+        lvBadge = Rect("lv", xpRow, new Vector2(0, .5f), new Vector2(18, -4), new Vector2(128, 128));
+        var bsh = Img(lvBadge, HudArt.Disc, new Vector2(.5f, .5f), new Vector2(0, -6), new Vector2(136, 136)); bsh.color = new Color(0, 0, 0, 0.5f);
+        lvFlash = Img(lvBadge, HudArt.Glow, new Vector2(.5f, .5f), Vector2.zero, new Vector2(240, 240)); lvFlash.color = Kit.A(Toxic, 0f);
+        Img(lvBadge, HudArt.Disc, new Vector2(.5f, .5f), Vector2.zero, new Vector2(128, 128)).color = Kit.Hex("#0b0912");
+        Img(lvBadge, HudArt.RingS, new Vector2(.5f, .5f), Vector2.zero, new Vector2(124, 124)).color = new Color(1, 1, 1, 0.1f);
+        lvRing = Img(lvBadge, HudArt.RingS, new Vector2(.5f, .5f), Vector2.zero, new Vector2(124, 124));
+        lvRing.type = Image.Type.Filled; lvRing.fillMethod = Image.FillMethod.Radial360; lvRing.fillOrigin = 2; lvRing.fillClockwise = true; lvRing.color = Toxic;
+        Img(lvBadge, HudArt.Disc, new Vector2(.5f, .5f), Vector2.zero, new Vector2(98, 98)).color = Kit.Hex("#1a1430");
+        var lvl = Txt(lvBadge, "LEVEL", 30, new Vector2(.5f, .5f), new Vector2(0, 28), Kit.A(Toxic, 0.85f), TextAnchor.MiddleCenter, 120);
+        lvl.rectTransform.localScale = Vector3.one * 0.62f;
+        lvNum = Txt(lvBadge, "1", 58, new Vector2(.5f, .5f), new Vector2(0, -8), Color.white, TextAnchor.MiddleCenter, 120); Outline(lvNum, 3);
+
+        // ---- timer + time to dawn
+        timerText = Txt(hud, "00:00", 66, new Vector2(.5f, 1), new Vector2(0, -150), Bone);
         Outline(timerText, 3);
-        killText = Txt(hud, "0", 38, new Vector2(1, 1), new Vector2(-150, -110), Bone, TextAnchor.MiddleRight, 260);
-        Outline(killText, 2);
-        var skull = Txt(hud, "KILLS", 22, new Vector2(1, 1), new Vector2(-150, -150), new Color(1, 1, 1, 0.6f), TextAnchor.MiddleRight, 260);
-        goldText = Txt(hud, "0", 38, new Vector2(0, 1), new Vector2(170, -110), Gold, TextAnchor.MiddleLeft, 260);
-        Outline(goldText, 2);
-        candyText = Txt(hud, "", 34, new Vector2(0, 1), new Vector2(170, -165), Kit.Hex("#FF9A3C"), TextAnchor.MiddleLeft, 300);
+        dawnText = Txt(hud, "", 30, new Vector2(.5f, 1), new Vector2(0, -198), Kit.A(Bone, 0.6f));
+        dawnText.rectTransform.localScale = Vector3.one * 0.8f;
+        Outline(dawnText, 2);
+
+        // ---- vitals: beating heart, HP with numbers, lantern oil
+        heartRt = Rect("heart", hud, new Vector2(0, 1), new Vector2(86, -262), new Vector2(96, 96));
+        heartGlow = Img(heartRt, HudArt.Glow, new Vector2(.5f, .5f), Vector2.zero, new Vector2(190, 190)); heartGlow.color = Kit.A(Blood, 0.3f);
+        Img(heartRt, HudArt.Heart, new Vector2(.5f, .5f), new Vector2(0, -4), new Vector2(96, 96)).color = new Color(0, 0, 0, 0.5f);
+        Img(heartRt, HudArt.Heart, new Vector2(.5f, .5f), Vector2.zero, new Vector2(96, 96)).color = Kit.Hex("#FF3B5C");
+        hpBar = new HudBar(hud, new Vector2(0, 1), new Vector2(370, -262), new Vector2(440, 46), Blood, Kit.Hex("#FFE3C2"), 4, 32, F);
+        hpBar.RimCol = new Color(1f, 0.6f, 0.6f, 0.22f);
+        heartRt.SetAsLastSibling();
+        var lamp = Img(hud, Icon("lantern-candle"), new Vector2(0, 1), new Vector2(160, -318), new Vector2(70, 70));
+        var lampGlow = Img(lamp.rectTransform, HudArt.Glow, new Vector2(.5f, .5f), Vector2.zero, new Vector2(90, 90)); lampGlow.color = Kit.A(Oil, 0.3f); lampGlow.transform.SetAsFirstSibling();
+        oilBar = new HudBar(hud, new Vector2(0, 1), new Vector2(370, -316), new Vector2(340, 24), Oil, Kit.Hex("#FFF0CF"), 0, 0, F);
+        oilBar.Root.anchoredPosition = new Vector2(200 + 170, -316);
+        oilBar.RimCol = Kit.A(Oil, 0.25f); oilBar.LowCol = Dusk; oilBar.ShineEvery = 4.5f;
+
+        // ---- counters
+        killPill = Pill(new Vector2(1, 1), new Vector2(-158, -262), Icon("gravestone-round"), Bone, out killText);
+        goldPill = Pill(new Vector2(1, 1), new Vector2(-158, -336), Icon("coin"), Gold, out goldText);
+        candyText = Txt(hud, "", 34, new Vector2(1, 1), new Vector2(-158, -398), Kit.Hex("#FF9A3C"), TextAnchor.MiddleCenter, 300);
         Outline(candyText, 2);
-        Img(hud, Icon("coin"), new Vector2(0, 1), new Vector2(60, -110), new Vector2(64, 64));
+        Btn(hud, "II", new Vector2(1, 1), new Vector2(-70, -150), new Vector2(90, 90), new Color(0, 0, 0, 0.5f), Color.white, () => Game.I.Pause(), 40);
 
-        Btn(hud, "II", new Vector2(1, 1), new Vector2(-60, -200), new Vector2(90, 90), new Color(0, 0, 0, 0.5f), Color.white, () => Game.I.Pause(), 40);
+        // ---- boss
+        bossBar = new HudBar(hud, new Vector2(.5f, 1), new Vector2(0, -470), new Vector2(760, 38), Blood, Kit.Hex("#FFE3C2"), 10, 0, F);
+        bossBar.RimCol = Kit.A(Gold, 0.4f);
+        bossName = Txt(bossBar.Root, "", 38, new Vector2(.5f, 1), new Vector2(0, 30), Kit.Hex("#FF7A8C"));
+        Outline(bossName, 3);
+        bossBar.Root.gameObject.SetActive(false);
 
-        hpBar = Box(hud, Vector2.zero, Vector2.zero, new Vector2(120, 16), new Color(0, 0, 0, 0.6f));
-        hpFill = Box(hpBar, new Vector2(0, .5f), new Vector2(3, 0), new Vector2(114, 10), Blood);
-        hpFill.pivot = new Vector2(0, .5f);
-        // lantern oil gauge, right under the health bar
-        oilBar = Box(hud, Vector2.zero, Vector2.zero, new Vector2(120, 14), new Color(0, 0, 0, 0.6f));
-        oilFill = Box(oilBar, new Vector2(0, .5f), new Vector2(3, 0), new Vector2(114, 8), Kit.Hex("#FFB25A"));
-        oilFill.pivot = new Vector2(0, .5f);
-        var lamp = Img(oilBar, Icon("lantern-candle"), new Vector2(0, .5f), new Vector2(-16, 0), new Vector2(30, 30));
-
-        bossBar = Box(hud, new Vector2(.5f, 1), new Vector2(0, -210), new Vector2(760, 34), new Color(0, 0, 0, 0.65f));
-        bossFill = Box(bossBar, new Vector2(0, .5f), new Vector2(4, 0), new Vector2(752, 24), Blood);
-        bossFill.pivot = new Vector2(0, .5f);
-        bossName = Txt(bossBar, "", 30, new Vector2(.5f, 1), new Vector2(0, 26), Blood);
-        Outline(bossName, 2);
-        bossBar.gameObject.SetActive(false);
+        // ---- mini HP over the hero
+        miniHp = new HudBar(hud, Vector2.zero, Vector2.zero, new Vector2(132, 18), Blood, Kit.Hex("#FFE3C2"), 0, 0, F);
+        miniHp.ShineEvery = 999f;
+        miniGroup = miniHp.Root.gameObject.AddComponent<CanvasGroup>(); miniGroup.alpha = 0;
     }
 
     public void ShowHud(bool on) => hud.gameObject.SetActive(on);
@@ -409,34 +466,85 @@ public class UI : MonoBehaviour
 
         if (hud.gameObject.activeSelf && g.Hero)
         {
-            float need = Defs.XpForLevel(g.Level);
-            var xpBg = (RectTransform)xpFill.parent;
-            xpFill.sizeDelta = new Vector2(Mathf.Max(0, (xpBg.rect.width - 8) * Mathf.Clamp01(g.Xp / need)), 22);
-            lvText.text = "LV " + g.Level;
+            // XP row spans the top, capped on wide screens
+            // landscape: the canvas matches height, so scale the whole HUD up to a comfortable size
+            float hs = root.rect.width > root.rect.height ? 1.45f : 1f;
+            hud.anchorMin = hud.anchorMax = new Vector2(.5f, .5f);
+            hud.sizeDelta = root.rect.size / hs; hud.localScale = Vector3.one * hs;
+            xpRow.sizeDelta = new Vector2(Mathf.Min(hud.rect.width - 150, 1400), 44);
+            float need = Defs.XpForLevel(g.Level), xp01 = Mathf.Clamp01(g.Xp / need);
+            if (g.Level != lastLevel)
+            {
+                if (lastLevel > 0 && g.Level > lastLevel) { lvPop = 1f; xpBar.Shine(); xpBar.Flash(); }
+                xpBar.Reset(xp01); lastLevel = g.Level;
+            }
+            xpBar.Set(xp01, udt);
+            xpText.text = g.Xp + " / " + Mathf.RoundToInt(need);
+            lvNum.text = g.Level.ToString();
+            lvRing.fillAmount = Mathf.Lerp(lvRing.fillAmount, xp01, 1f - Mathf.Exp(-udt * 8f));
+            lvPop = Mathf.Max(0, lvPop - udt * 1.6f);
+            lvBadge.localScale = Vector3.one * (1f + Mathf.Sin(Mathf.Clamp01(1f - lvPop) * Mathf.PI) * 0.22f * (lvPop > 0 ? 1 : 0));
+            lvFlash.color = Kit.A(Toxic, lvPop * 0.85f);
+            lvFlash.rectTransform.localScale = Vector3.one * (1.5f - lvPop * 0.5f);
+
+            // timer
             float left = Mathf.Max(0, Defs.RunLength - g.RunTime);
             timerText.text = Clock(g.RunTime);
             timerText.color = left < 30 ? Color.Lerp(Bone, Gold, Mathf.PingPong(Time.unscaledTime * 3, 1)) : Bone;
-            killText.text = Horde.I.Kills.ToString();
-            goldText.text = g.RunGold.ToString();
+            dawnText.text = left > 0 ? "DAWN IN " + Clock(left) : "DAWN!";
+
+            // vitals
+            var hp = g.Hero; float hp01 = Mathf.Clamp01(hp.Hp / Mathf.Max(1, hp.MaxHp));
+            if (lastHp >= 0 && hp.Hp > lastHp + 0.5f) { hpBar.Flash(0.9f); miniHp.Flash(0.9f); }
+            if (lastHp >= 0 && hp.Hp < lastHp - 0.01f) { miniShow = 2.5f; heartHit = 1f; }
+            lastHp = hp.Hp;
+            hpBar.Low = miniHp.Low = hp01 < 0.3f;
+            hpBar.Set(hp01, udt);
+            hpBar.Label.text = Mathf.CeilToInt(hp.Hp) + " / " + Mathf.RoundToInt(hp.MaxHp);
+            heartPhase += udt * (hp01 < 0.3f ? 2.4f : 1.1f);
+            float beat = Mathf.Pow(Mathf.Max(0, Mathf.Sin(heartPhase * Mathf.PI * 2f)), 10f);
+            heartHit = Mathf.Max(0, heartHit - udt * 4f);
+            heartRt.localScale = Vector3.one * (1f + beat * (hp01 < 0.3f ? 0.16f : 0.08f) + heartHit * 0.25f);
+            heartRt.localRotation = Quaternion.Euler(0, 0, Mathf.Sin(Time.unscaledTime * 60f) * 10f * heartHit);
+            heartGlow.color = Kit.A(Blood, 0.22f + beat * 0.25f + (hp01 < 0.3f ? 0.2f : 0f));
+            float fuel = Lantern.I.Fuel01;
+            oilBar.Low = fuel < 0.22f;
+            oilBar.Col = Color.Lerp(Dusk, Oil, Mathf.Clamp01(fuel * 3f));
+            oilBar.Set(fuel, udt);
+
+            // counters roll up and punch
+            int kills = Horde.I.Kills, gold = g.RunGold;
+            if (lastKills < 0 || kills < lastKills) shownKills = kills;
+            if (lastGold < 0 || gold < lastGold) shownGold = gold;
+            if (kills > lastKills && lastKills >= 0) killPunch = Mathf.Min(1f, killPunch + 0.35f);
+            if (gold > lastGold && lastGold >= 0) goldPunch = 1f;
+            lastKills = kills; lastGold = gold;
+            shownKills = Mathf.MoveTowards(shownKills, kills, Mathf.Max(1f, (kills - shownKills) * 10f) * udt);
+            shownGold = Mathf.MoveTowards(shownGold, gold, Mathf.Max(1f, (gold - shownGold) * 10f) * udt);
+            killText.text = Mathf.RoundToInt(shownKills).ToString();
+            goldText.text = Mathf.RoundToInt(shownGold).ToString();
+            killPunch = Mathf.Max(0, killPunch - udt * 4f); goldPunch = Mathf.Max(0, goldPunch - udt * 4f);
+            killPill.localScale = Vector3.one * (1f + killPunch * 0.07f);
+            goldPill.localScale = Vector3.one * (1f + goldPunch * 0.12f);
             candyText.text = Spooky.On ? g.RunCandy + " CANDY" : "";
 
-            var hp = g.Hero;
-            var sp = g.Cam.WorldToScreenPoint(hp.transform.position + Vector3.down * 0.25f);
-            hpBar.position = sp;
-            hpFill.sizeDelta = new Vector2(114 * Mathf.Clamp01(hp.Hp / hp.MaxHp), 10);
-            oilBar.position = sp + Vector3.down * 20f * root.lossyScale.y;
-            float fuel = Lantern.I.Fuel01;
-            oilFill.sizeDelta = new Vector2(114 * Mathf.Max(0.02f, fuel), 8);
-            oilFill.GetComponent<Image>().color = fuel < 0.22f ? Color.Lerp(Kit.Hex("#FFB25A"), Kit.Hex("#B98CFF"), Mathf.PingPong(Time.unscaledTime * 4, 1)) : Kit.Hex("#FFB25A");
-            hpFill.GetComponent<Image>().color = hp.Hp / hp.MaxHp < 0.3f ? Color.Lerp(Blood, Color.white, Mathf.PingPong(Time.unscaledTime * 4, 1) * 0.5f) : Blood;
+            // mini HP under the hero: only after a hit or while hurting
+            var sp = g.Cam.WorldToScreenPoint(hp.transform.position + Vector3.down * 0.3f);
+            miniHp.Root.position = sp;
+            miniShow = Mathf.Max(0, miniShow - udt);
+            miniGroup.alpha = Mathf.MoveTowards(miniGroup.alpha, miniShow > 0 || hp01 < 0.5f ? 1f : 0f, udt * 4f);
+            miniHp.Set(hp01, udt);
 
+            // boss
             var boss = Horde.I.Boss;
-            bossBar.gameObject.SetActive(boss != null);
+            bossBar.Root.gameObject.SetActive(boss != null);
             if (boss != null)
             {
+                if (!bossWas) { bossBar.Reset(1f); bossBar.Shine(); }
                 bossName.text = boss.def.name;
-                bossFill.sizeDelta = new Vector2(752 * Mathf.Clamp01(boss.hp / boss.maxHp), 24);
+                bossBar.Set(boss.hp / boss.maxHp, udt);
             }
+            bossWas = boss != null;
         }
 
         if (bannerT > 0)
