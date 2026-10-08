@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public enum EType { Zombie, Skeleton, Ghost, Vampire, Brute, BossZombie, BossVampire, BossOrc, Mage, Pumpkin, BossPumpkin }
+public enum EType { Zombie, Skeleton, Ghost, Vampire, Brute, BossZombie, BossVampire, BossOrc, Mage, Pumpkin, BossPumpkin, BossColossus, BossWitch, BossLich }
 
 public class EDef
 {
@@ -46,6 +46,10 @@ public static class Defs
         [EType.BossZombie]  = new EDef { name = "ROTTING GIANT", model = "Characters/character-zombie", hp = 1400, speed = 1.25f, dmg = 25, radius = 1.2f, scale = 4.2f, xp = 60, boss = true, tint = new Color(0.8f, 1.15f, 0.8f) },
         [EType.BossVampire] = new EDef { name = "COUNT NOCTIS", model = "Characters/character-vampire", hp = 3200, speed = 1.9f, dmg = 30, radius = 1.0f, scale = 3.6f, xp = 120, boss = true, tint = new Color(1.2f, 0.75f, 0.8f) },
         [EType.BossOrc]     = new EDef { name = "ORC WARLORD", model = "Dungeon/Characters/character-orc", hp = 7000, speed = 1.6f, dmg = 38, radius = 1.3f, scale = 4.6f, xp = 200, boss = true, tint = new Color(1.1f, 0.85f, 0.7f) },
+        // BLOOD MOON (level 2) bosses
+        [EType.BossColossus] = new EDef { name = "THE BONE COLOSSUS", model = "KaySkel/Skeleton_Warrior", kay = new[] { "KaySkel/Skeleton_Warrior" }, weaponR = "KaySkel/Skeleton_Axe", weaponL = "KaySkel/Skeleton_Shield_Large_B", height = 4.6f, hp = 2400, speed = 1.45f, dmg = 30, radius = 1.3f, scale = 1f, xp = 90, boss = true, tint = new Color(1.15f, 0.95f, 0.9f) },
+        [EType.BossWitch]    = new EDef { name = "THE BOG WITCH", model = "Spooky/character_witch", proc = true, height = 3.8f, hp = 3600, speed = 2.0f, dmg = 30, radius = 1.0f, scale = 1f, xp = 140, boss = true, ghost = true },
+        [EType.BossLich]     = new EDef { name = "THE LICH KING", model = "KaySkel/Skeleton_Mage", kay = new[] { "KaySkel/Skeleton_Mage" }, weaponR = "KaySkel/Skeleton_Staff", height = 4.0f, hp = 7500, speed = 1.55f, dmg = 40, radius = 1.3f, scale = 1f, xp = 240, boss = true, tint = new Color(0.8f, 1.0f, 1.3f) },
     };
 
     public static readonly Dictionary<Up, UpDef> U = new Dictionary<Up, UpDef>
@@ -85,4 +89,6 @@ public class SaveData
     public int candy;
     public string hatsOwned = "";
     public string hat = "";
+    // levels: graveyard bosses beaten (bit 1 giant, 2 count, 4 warlord) unlock BLOOD MOON
+    public int stage = 1, l1Bosses, wins2;
 }

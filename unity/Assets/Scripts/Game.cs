@@ -31,6 +31,37 @@ public class Game : MonoBehaviour
     public float ArmorMult => Mathf.Pow(0.92f, A.Level(Up.Armor));
     public float GoldMult => 1f + 0.12f * Save.shop[4];
 
+    // ---- levels: 1 THE GRAVEYARD, 2 BLOOD MOON (unlocks after beating the graveyard's three bosses)
+    public int Stage => Save.stage == 2 && Stage2Unlocked ? 2 : 1;
+    public bool Stage2Unlocked => (Save.l1Bosses & 7) == 7;
+    public int L1BossesBeaten => (Save.l1Bosses & 1) + ((Save.l1Bosses >> 1) & 1) + ((Save.l1Bosses >> 2) & 1);
+    public static string StageName(int s) => s == 2 ? "BLOOD MOON" : "THE GRAVEYARD";
+    public bool JustUnlocked;
+
+    public void SelectStage(int s)
+    {
+        if (s == 2 && !Stage2Unlocked) return;
+        if (Save.stage == s) return;
+        Save.stage = s; Persist();
+        if (map) Destroy(map.gameObject);
+        BuildMap(Stage == 2 ? 666 : 1337);
+        ApplySky();
+        WebBridge.Event("stage_select", s);
+    }
+
+    // moonlight, ambient and fog per level
+    void ApplySky()
+    {
+        bool blood = Stage == 2;
+        moon.color = blood ? Kit.Hex("#ff8a7a") : Kit.Hex("#cdd3ff");
+        moon.intensity = blood ? 0.8f : 0.85f;
+        RenderSettings.ambientSkyColor = blood ? Kit.Hex("#5e3448") : Kit.Hex("#46506e");
+        RenderSettings.ambientEquatorColor = blood ? Kit.Hex("#3c2430") : Kit.Hex("#2f3542");
+        RenderSettings.ambientGroundColor = blood ? Kit.Hex("#1c0c14") : Kit.Hex("#15101f");
+        RenderSettings.fogColor = blood ? Kit.Hex("#1d0a12") : Kit.Hex("#0b0a17");
+        Cam.backgroundColor = RenderSettings.fogColor;
+    }
+
     // ======================================================================
     void Awake()
     {
@@ -48,6 +79,7 @@ public class Game : MonoBehaviour
         DevCam.Install(Dev);
         AutoPlay = url.Contains("bot=1");
         if (Dev && url.Contains("fresh=1")) Save = new SaveData();
+        if (Dev && url.Contains("stage=2")) { Save.l1Bosses = 7; Save.stage = 2; }
         if (Dev && url.Contains("rich=1")) Save.candy = Mathf.Max(Save.candy, 999);
         var sm = System.Text.RegularExpressions.Regex.Match(url, @"speed=(\d+)");
         if (Dev && sm.Success) Time.timeScale = Mathf.Clamp(int.Parse(sm.Groups[1].Value), 1, 8);
@@ -81,7 +113,8 @@ public class Game : MonoBehaviour
         new GameObject("Lantern").AddComponent<Lantern>();
         new GameObject("UI").AddComponent<UI>().Init();
 
-        BuildMap(1337);
+        BuildMap(Stage == 2 ? 666 : 1337);
+        ApplySky();
         Hero = Hero.Create(transform);
         Hero.ResetRun();
         GoMenu();
@@ -128,11 +161,12 @@ public class Game : MonoBehaviour
         var ground = Kit.MeshObject("Ground", Kit.BuildQuad(100f, 14f));
         ground.transform.SetParent(map, false);
         ground.transform.localRotation = Quaternion.Euler(90, 0, 0);
-        var gm = new Material(Shader.Find("Standard")) { mainTexture = Kit.Noise(256, Kit.Hex("#1f2a1d"), Kit.Hex("#3b4a2c"), 0.05f, 7, 0) };
+        bool blood = Stage == 2;
+        var gm = new Material(Shader.Find("Standard")) { mainTexture = blood ? Kit.Noise(256, Kit.Hex("#2a1716"), Kit.Hex("#4a2a24"), 0.05f, 11, 0) : Kit.Noise(256, Kit.Hex("#1f2a1d"), Kit.Hex("#3b4a2c"), 0.05f, 7, 0) };
         gm.SetFloat("_Glossiness", 0.02f);
         ground.GetComponent<MeshRenderer>().sharedMaterial = gm;
         // worn dirt clearing at the centre
-        Kit.FloorQuad("clearing", Kit.Glow, Kit.A(Kit.Hex("#4a3b2c"), 0.8f), 16f, map, Vector3.zero, 0.01f);
+        Kit.FloorQuad("clearing", Kit.Glow, Kit.A(blood ? Kit.Hex("#5a2a26") : Kit.Hex("#4a3b2c"), 0.8f), 16f, map, Vector3.zero, 0.01f);
 
         // iron fence ring (the arena wall) with a gate to the south
         float fr = Defs.ArenaR + 0.4f;
@@ -142,17 +176,20 @@ public class Game : MonoBehaviour
             float a = i / (float)segs * Mathf.PI * 2f;
             var p = Polar(a, fr);
             bool gate = Mathf.Abs(Mathf.DeltaAngle(a * Mathf.Rad2Deg, 270f)) < 4f;
-            Put(gate ? "iron-fence-damaged" : (i % 7 == 3 ? "iron-fence-damaged" : "iron-fence"), 1.6f, p, -a * Mathf.Rad2Deg + 90f);
+            Put(gate ? "iron-fence-damaged" : (i % 7 == 3 || (blood && i % 3 == 1) ? "iron-fence-damaged" : "iron-fence"), 1.6f, p, -a * Mathf.Rad2Deg + 90f);
+            if (blood && i % 9 == 0 && !gate) Put("pillar-obelisk", 1.7f, p, 0);   // blood moon: obelisk posts along the wall
         }
         // forest outside the fence
         for (int i = 0; i < 90; i++)
         {
             float a = R() * Mathf.PI * 2f, r = fr + 2f + R() * 14f;
-            Put(R() < 0.3f ? "pine-crooked" : "pine", 2.0f + R() * 1.4f, Polar(a, r), R() * 360f);
+            if (blood) Put(R() < 0.5f ? "pine-fall-crooked" : "pine-fall", 2.0f + R() * 1.4f, Polar(a, r), R() * 360f);   // dead autumn wood
+            else Put(R() < 0.3f ? "pine-crooked" : "pine", 2.0f + R() * 1.4f, Polar(a, r), R() * 360f);
         }
 
         // grave rows in little sections
-        string[] stones = { "gravestone-round", "gravestone-cross", "gravestone-bevel", "gravestone-broken", "gravestone-decorative", "gravestone-wide", "cross", "cross-wood" };
+        string[] stones = blood ? new[] { "gravestone-cross-large", "gravestone-broken", "gravestone-cross", "gravestone-decorative", "gravestone-bevel", "cross", "grave-border", "gravestone-broken" }
+            : new[] { "gravestone-round", "gravestone-cross", "gravestone-bevel", "gravestone-broken", "gravestone-decorative", "gravestone-wide", "cross", "cross-wood" };
         for (int c = 0; c < 13; c++)
         {
             float a = R() * Mathf.PI * 2f, r = 7f + R() * 19f;
@@ -174,9 +211,10 @@ public class Game : MonoBehaviour
 
         // crypts
         string[] crypts = { "crypt", "crypt-small", "crypt-large" };
-        for (int i = 0; i < 6; i++)
+        int nCrypts = blood ? 9 : 6;
+        for (int i = 0; i < nCrypts; i++)
         {
-            float a = (i / 6f + R() * 0.08f) * Mathf.PI * 2f, r = 12f + R() * 13f;
+            float a = (i / (float)nCrypts + R() * 0.06f) * Mathf.PI * 2f, r = 12f + R() * 13f;
             var p = Polar(a, r);
             var go = Put(crypts[rng.Next(crypts.Length)], 2.3f, p, Mathf.Atan2(-p.x, -p.z) * Mathf.Rad2Deg);
             var b = Kit.WorldBounds(go);
@@ -188,16 +226,17 @@ public class Game : MonoBehaviour
         {
             var p = Polar(R() * Mathf.PI * 2f, 6f + R() * 23f);
             if (Obstacles.Blocked(p, 1.2f)) continue;
-            Put(R() < 0.5f ? "pine" : "pine-crooked", 1.8f + R() * 0.9f, p, R() * 360f, 0.55f);
+            Put(blood ? (R() < 0.5f ? "pine-fall" : "pine-fall-crooked") : R() < 0.5f ? "pine" : "pine-crooked", 1.8f + R() * 0.9f, p, R() * 360f, 0.55f);
         }
         for (int i = 0; i < 12; i++)
         {
             var p = Polar(i / 12f * Mathf.PI * 2f + R() * 0.2f, 9f + (i % 3) * 7f);
             if (Obstacles.Blocked(p, 0.8f)) continue;
             Put(R() < 0.5f ? "lightpost-single" : "lightpost-double", 2.0f, p, R() * 360f, 0.25f);
-            Kit.FloorQuad("lamp", Kit.Glow, Kit.A(Kit.Hex("#ffcf7a"), 0.32f), 7f, map, p, 0.02f);
+            Kit.FloorQuad("lamp", Kit.Glow, Kit.A(blood ? Kit.Hex("#ff6a5a") : Kit.Hex("#ffcf7a"), 0.32f), 7f, map, p, 0.02f);
         }
-        string[] clutter = { "pumpkin", "pumpkin-carved", "pumpkin-tall-carved", "rocks", "debris", "trunk", "coffin", "coffin-old", "candle-multiple", "urn-round", "shovel-dirt", "rocks-tall" };
+        string[] clutter = blood ? new[] { "bench-damaged", "coffin-old", "coffin", "rocks", "debris", "trunk", "candle-multiple", "urn-round", "rocks-tall", "pumpkin-carved", "coffin-old", "debris" }
+            : new[] { "pumpkin", "pumpkin-carved", "pumpkin-tall-carved", "rocks", "debris", "trunk", "coffin", "coffin-old", "candle-multiple", "urn-round", "shovel-dirt", "rocks-tall" };
         for (int i = 0; i < 70; i++)
         {
             var p = Polar(R() * Mathf.PI * 2f, 4f + R() * 25f);
@@ -208,10 +247,19 @@ public class Game : MonoBehaviour
             if (m.Contains("carved"))
                 Kit.FloorQuad("pglow", Kit.Glow, Kit.A(Kit.Hex("#FF8C42"), 0.35f), 2.6f, map, p, 0.03f);
         }
-        // candle circle altar at the centre
+        // candle circle altar at the centre (blood moon: a ring of obelisks round a blood pool, open to the south)
         Put("altar-stone", 1.8f, new Vector3(0, 0, 3.2f), 180f, 0.6f);
-        for (int i = 0; i < 8; i++) Put("candle-multiple", 1.4f, Polar(i / 8f * Mathf.PI * 2f, 2.6f) + new Vector3(0, 0, 3.2f), R() * 360f);
-        Kit.FloorQuad("altarGlow", Kit.Glow, Kit.A(Kit.Hex("#ffb56b"), 0.3f), 7f, map, new Vector3(0, 0, 3.2f), 0.02f);
+        if (blood)
+        {
+            foreach (var deg in new[] { 30f, 90f, 150f, 210f, 330f })
+                Put("pillar-obelisk", 1.9f, Polar(deg * Mathf.Deg2Rad, 3.4f) + new Vector3(0, 0, 3.6f), R() * 360f, 0.4f);
+            Kit.FloorQuad("altarGlow", Kit.Glow, Kit.A(Kit.Hex("#ff2a3a"), 0.42f), 8f, map, new Vector3(0, 0, 3.2f), 0.02f);
+        }
+        else
+        {
+            for (int i = 0; i < 8; i++) Put("candle-multiple", 1.4f, Polar(i / 8f * Mathf.PI * 2f, 2.6f) + new Vector3(0, 0, 3.2f), R() * 360f);
+            Kit.FloorQuad("altarGlow", Kit.Glow, Kit.A(Kit.Hex("#ffb56b"), 0.3f), 7f, map, new Vector3(0, 0, 3.2f), 0.02f);
+        }
 
         if (Spooky.On) SpookyDecor(rng);
 
@@ -285,7 +333,7 @@ public class Game : MonoBehaviour
         if (AutoPlay) StartCoroutine(AutoStart());
     }
 
-    IEnumerator DevBossSoon() { yield return new WaitForSeconds(3f); Horde.I.DevBoss(EType.BossPumpkin); }
+    IEnumerator DevBossSoon(EType t) { yield return new WaitForSeconds(3f); Horde.I.DevBoss(t); }
 
     IEnumerator AutoStart() { yield return new WaitForSecondsRealtime(1.5f); if (State == S.Menu) StartRun(); }
 
@@ -300,11 +348,18 @@ public class Game : MonoBehaviour
         State = S.Playing;
         if (!(Dev && Application.absoluteURL.Contains("speed="))) Time.timeScale = 1f;
         UI.I.ShowHud(true);
-        UI.I.Banner("KEEP YOUR LANTERN LIT", Kit.Hex("#FFC27A"));
+        JustUnlocked = false;
+        UI.I.Banner(Stage == 2 ? "THE BLOOD MOON RISES" : "KEEP YOUR LANTERN LIT", Stage == 2 ? Kit.Hex("#FF4D5E") : Kit.Hex("#FFC27A"));
+        if (Stage == 2) WebBridge.Event("stage2_start", Save.runs);
         Sfx.I.StartMusic();
         WebBridge.Gameplay(true);
         WebBridge.Event("run_start", Save.runs);
-        if (Dev && Application.absoluteURL.Contains("boss=pk")) StartCoroutine(DevBossSoon());
+        var u = Application.absoluteURL;
+        if (Dev && u.Contains("boss=pk")) StartCoroutine(DevBossSoon(EType.BossPumpkin));
+        if (Dev && u.Contains("boss=col")) StartCoroutine(DevBossSoon(EType.BossColossus));
+        if (Dev && u.Contains("boss=witch")) StartCoroutine(DevBossSoon(EType.BossWitch));
+        if (Dev && u.Contains("boss=lich")) StartCoroutine(DevBossSoon(EType.BossLich));
+        if (Dev && u.Contains("boss=giant")) StartCoroutine(DevBossSoon(EType.BossZombie));
     }
 
     public void Pause()
@@ -396,6 +451,31 @@ public class Game : MonoBehaviour
         Pickups.I.VacuumAll();
         StartCoroutine(SlowMo());
         WebBridge.Event("boss_" + e.type.ToString().ToLower(), (int)RunTime);
+        if (Stage == 1 && State == S.Playing)
+        {
+            int bit = e.type == EType.BossZombie ? 1 : e.type == EType.BossVampire ? 2 : e.type == EType.BossOrc ? 4 : 0;
+            if (bit != 0 && (Save.l1Bosses & bit) == 0)
+            {
+                bool had = Stage2Unlocked;
+                Save.l1Bosses |= bit; Persist();
+                if (!had && Stage2Unlocked) { JustUnlocked = true; StartCoroutine(UnlockBanner()); WebBridge.Event("stage2_unlock", Save.runs); }
+                else if (!Stage2Unlocked) StartCoroutine(BossTally());
+            }
+        }
+    }
+
+    IEnumerator BossTally()
+    {
+        yield return new WaitForSecondsRealtime(2.4f);
+        UI.I.Banner("GRAVEYARD BOSSES  " + L1BossesBeaten + " / 3", Kit.Hex("#FF8A7A"));
+    }
+
+    IEnumerator UnlockBanner()
+    {
+        yield return new WaitForSecondsRealtime(2.4f);
+        UI.I.Banner("LEVEL 2 UNLOCKED: BLOOD MOON", Kit.Hex("#FF4D5E"));
+        Sfx.I.Chest();
+        Fx.I.Shockwave(Hero.transform.position, Kit.Hex("#FF4D5E"), 10f);
     }
 
     IEnumerator SlowMo()
@@ -420,7 +500,7 @@ public class Game : MonoBehaviour
     {
         State = S.Won;
         Sfx.I.Win();
-        UI.I.Banner("DAWN BREAKS!", Kit.Hex("#FFD166"));
+        UI.I.Banner(Stage == 2 ? "THE BLOOD MOON SETS!" : "DAWN BREAKS!", Kit.Hex("#FFD166"));
         StartCoroutine(Sunrise());
         StartCoroutine(ShowEnd(true, 2.6f));
     }
@@ -436,20 +516,14 @@ public class Game : MonoBehaviour
             RenderSettings.fogColor = Color.Lerp(fog0, Kit.Hex("#f2a15a"), k);
             RenderSettings.ambientSkyColor = Color.Lerp(amb0, Kit.Hex("#ffd3a1"), k);
             Cam.backgroundColor = RenderSettings.fogColor;
-            moon.color = Color.Lerp(Kit.Hex("#cdd3ff"), Kit.Hex("#ffd8a8"), k);
+            moon.color = Color.Lerp(Stage == 2 ? Kit.Hex("#ff8a7a") : Kit.Hex("#cdd3ff"), Kit.Hex("#ffd8a8"), k);
             var list = Horde.I.Alive.ToArray();
             for (int i = 0; i < list.Length && i < 6; i++) Horde.I.Damage(list[i], 99999, Vector3.zero, 0, true);
             yield return null;
         }
     }
 
-    void ResetSky()
-    {
-        RenderSettings.fogColor = Kit.Hex("#0b0a17");
-        RenderSettings.ambientSkyColor = Kit.Hex("#46506e");
-        Cam.backgroundColor = Kit.Hex("#0b0a17");
-        moon.color = Kit.Hex("#cdd3ff");
-    }
+    void ResetSky() => ApplySky();
 
     int bankedGold;
     public int lastCandy;
@@ -462,6 +536,7 @@ public class Game : MonoBehaviour
         Save.candy += RunCandy; lastCandy = RunCandy; RunCandy = 0;
         Save.runs++;
         if (won) Save.wins++;
+        if (won && Stage == 2) Save.wins2++;
         if (RunTime > Save.bestTime) Save.bestTime = Mathf.FloorToInt(RunTime);
         if (Horde.I.Kills > Save.bestKills) Save.bestKills = Horde.I.Kills;
         Persist();
@@ -512,7 +587,8 @@ public class Game : MonoBehaviour
 
     public string ShareText()
     {
-        string head = State == S.Won ? "\U0001F305 I survived until DAWN in GRAVE SHIFT!" : "\U0001FAA6 I survived " + UI.Clock(RunTime) + " in GRAVE SHIFT";
+        string where = Stage == 2 ? " on the BLOOD MOON" : "";
+        string head = State == S.Won ? "\U0001F305 I survived until DAWN" + where + " in GRAVE SHIFT!" : "\U0001FAA6 I survived " + UI.Clock(RunTime) + where + " in GRAVE SHIFT";
         return head + "\n\U0001F9DF " + runKills + " undead destroyed · \U0001F3EE " + Lantern.I.OilCollected + " oil · ⭐ LV " + Level + "\nCan you keep your lantern lit until dawn?";
     }
 

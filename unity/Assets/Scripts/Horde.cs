@@ -217,7 +217,7 @@ public class Horde : MonoBehaviour
                 if (def.boss)
                 {
                     var glow = new GameObject("glow").AddComponent<SpriteRenderer>();
-                    glow.sprite = Fx.Glow; glow.color = Kit.A(Kit.Hex("#FF8C42"), 0.45f);
+                    glow.sprite = Fx.Glow; glow.color = Kit.A(type == EType.BossWitch ? Kit.Hex("#B07CFF") : Kit.Hex("#FF8C42"), 0.45f);
                     glow.transform.SetParent(go.transform, false); glow.transform.localPosition = new Vector3(0, 0.05f, 0);
                     glow.transform.localRotation = Quaternion.Euler(90, 0, 0); glow.transform.localScale = Vector3.one * 1.6f;
                 }
@@ -234,9 +234,10 @@ public class Horde : MonoBehaviour
         float t = Game.I.RunTime;
         float hpMult = 1f + t / 60f * 0.5f;
         e.id = ++nextId;
-        e.maxHp = e.hp = def.hp * hpMult * (def.boss ? 1f + Game.I.Loop * 0.5f : 1f);
-        e.speed = def.speed * UnityEngine.Random.Range(0.9f, 1.1f);
-        e.dmg = def.dmg * (1f + t / 60f * 0.12f);
+        bool blood = Game.I.Stage == 2 && !Attract;
+        e.maxHp = e.hp = def.hp * hpMult * (def.boss ? 1f + Game.I.Loop * 0.5f : blood ? 1.4f : 1f);
+        e.speed = def.speed * UnityEngine.Random.Range(0.9f, 1.1f) * (blood && !def.boss ? 1.06f : 1f);
+        e.dmg = def.dmg * (1f + t / 60f * 0.12f) * (blood ? 1.2f : 1f);
         e.radius = def.radius;
         e.atkCd = 0.5f; e.flash = 0; e.special = 3f; e.special2 = 6f; e.knock = Vector3.zero; e.slow = 0;
         e.alive = true; e.dieT = 0;
@@ -324,6 +325,7 @@ public class Horde : MonoBehaviour
         foreach (var e in dying) Release(e);
         Alive.Clear(); dying.Clear();
         Boss = null; Kills = 0; spawnAcc = 0; nextEvent = 0;
+        beats = null;   // the schedule depends on the level
     }
 
     void Release(Enemy e)
@@ -373,7 +375,7 @@ public class Horde : MonoBehaviour
             float spd = e.speed * (e.slow > 0 ? 0.55f : 1f);
             e.slow -= dt;
 
-            if (e.def.boss && !Attract) BossBrain(e, dir, dist, dt, ref spd);
+            if (e.def.boss && !Attract) BossBrain(e, dir, dist, dt, ref spd, ref pos);
             if (e.type == EType.Mage && !Attract) MageBrain(e, dir, dist, dt, ref spd);
             if (e.proc)
             {
@@ -453,7 +455,7 @@ public class Horde : MonoBehaviour
     }
 
     // ---------------------------------------------------------------- bosses
-    void BossBrain(Enemy e, Vector3 dir, float dist, float dt, ref float spd)
+    void BossBrain(Enemy e, Vector3 dir, float dist, float dt, ref float spd, ref Vector3 pos)
     {
         e.special -= dt;
         e.special2 -= dt;
@@ -552,6 +554,117 @@ public class Horde : MonoBehaviour
                     Sfx.I.Roar();
                 }
                 break;
+
+            // ---- BLOOD MOON ----
+            case EType.BossColossus:
+            {
+                // axe sweep around itself, and a ring of skeletons clawing up around the keeper
+                bool rage = e.hp < e.maxHp * 0.5f;
+                spd *= rage ? 1.3f : 1f;
+                if (e.special <= 0 && dist < 6.5f)
+                {
+                    e.special = rage ? 3.4f : 4.8f;
+                    var at = e.t.position;
+                    Fx.I.Telegraph(at, 3.8f, 0.95f, () =>
+                    {
+                        Fx.I.Shockwave(at, Kit.Hex("#F2E6CC"), 7.5f);
+                        Fx.I.Shake(0.55f);
+                        Sfx.I.Slam();
+                        if ((Game.I.Hero.transform.position - at).magnitude < 3.8f) Game.I.Hero.Hurt(e.dmg * 1.1f);
+                    });
+                    if (e.anim) e.anim.CrossFade(e.cAtk, 0.05f);
+                }
+                if (e.special2 <= 0)
+                {
+                    e.special2 = rage ? 7f : 9.5f;
+                    var c = hero.transform.position;
+                    for (int i = 0; i < 8; i++)
+                    {
+                        float a = i / 8f * Mathf.PI * 2f;
+                        var p = c + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 5.5f;
+                        if (p.magnitude > Defs.ArenaR) p = p.normalized * (Defs.ArenaR - 1f);
+                        Spawn(EType.Skeleton, p);
+                    }
+                    Sfx.I.Roar();
+                }
+                break;
+            }
+
+            case EType.BossWitch:
+            {
+                // hex circles around the keeper; blinks away in a puff and calls ghosts where she lands
+                bool rage = e.hp < e.maxHp * 0.5f;
+                if (e.special <= 0 && dist < 16f)
+                {
+                    e.special = rage ? 3.0f : 4.2f;
+                    var c = hero.transform.position;
+                    for (int i = 0; i < (rage ? 6 : 5); i++)
+                    {
+                        var at = i == 0 ? c : c + new Vector3(UnityEngine.Random.Range(-4.5f, 4.5f), 0, UnityEngine.Random.Range(-4.5f, 4.5f));
+                        Fx.I.Telegraph(at, 1.7f, 0.95f + i * 0.16f, () =>
+                        {
+                            Fx.I.Shockwave(at, Kit.Hex("#B07CFF"), 3.6f);
+                            Fx.I.Poof(at + Vector3.up * 0.4f, Kit.Hex("#7CFF6B"), 1.2f);
+                            Sfx.I.Boom();
+                            if ((Game.I.Hero.transform.position - at).magnitude < 1.7f) Game.I.Hero.Hurt(e.dmg * 0.75f);
+                        });
+                    }
+                }
+                if (e.special2 <= 0)
+                {
+                    e.special2 = rage ? 6.5f : 8.5f;
+                    Fx.I.Poof(pos + Vector3.up * 1.5f, Kit.Hex("#B07CFF"), 3f);
+                    float a = UnityEngine.Random.value * Mathf.PI * 2f;
+                    var np = hero.transform.position + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 8.5f;
+                    if (np.magnitude > Defs.ArenaR - 2f) np = np.normalized * (Defs.ArenaR - 2f);
+                    pos = np; e.knock = Vector3.zero;
+                    Fx.I.Poof(np + Vector3.up * 1.5f, Kit.Hex("#B07CFF"), 3f);
+                    Fx.I.Shockwave(np, Kit.Hex("#B07CFF"), 4f);
+                    Sfx.I.Dash();
+                    for (int i = 0; i < (rage ? 5 : 4); i++)
+                    {
+                        float b = i / (rage ? 5f : 4f) * Mathf.PI * 2f;
+                        Spawn(EType.Ghost, np + new Vector3(Mathf.Cos(b), 0, Mathf.Sin(b)) * 2.4f, false);
+                    }
+                }
+                break;
+            }
+
+            case EType.BossLich:
+            {
+                // soul nova: a ring of curses closes on the keeper; raises mages and brutes
+                bool rage = e.hp < e.maxHp * 0.5f;
+                spd *= rage ? 1.25f : 1f;
+                if (e.special <= 0 && dist < 14f)
+                {
+                    e.special = rage ? 3.3f : 4.6f;
+                    var c = hero.transform.position;
+                    int n = rage ? 8 : 6;
+                    for (int i = 0; i <= n; i++)
+                    {
+                        float a = i / (float)n * Mathf.PI * 2f;
+                        var at = i == n ? c : c + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 3.1f;
+                        float delay = i == n ? 1.5f : 1.2f;   // room to step out of the ring
+                        Fx.I.Telegraph(at, 1.6f, delay, () =>
+                        {
+                            Fx.I.Shockwave(at, Kit.Hex("#5CE1FF"), 3.2f);
+                            if ((Game.I.Hero.transform.position - at).magnitude < 1.6f) Game.I.Hero.Hurt(e.dmg * 0.6f);
+                        });
+                    }
+                    Fx.I.Shake(0.3f);
+                    Sfx.I.Slam();
+                    if (e.anim) e.anim.CrossFade(e.cAtk, 0.05f);
+                }
+                if (e.special2 <= 0)
+                {
+                    e.special2 = rage ? 9f : 12f;
+                    for (int i = 0; i < 3; i++) Spawn(EType.Mage, pos + UnityEngine.Random.insideUnitSphere.normalized * 3.2f);
+                    for (int i = 0; i < 2; i++) Spawn(EType.Brute, pos + UnityEngine.Random.insideUnitSphere.normalized * 3.6f);
+                    Fx.I.Shockwave(pos, Kit.Hex("#5CE1FF"), 5f);
+                    Sfx.I.Roar();
+                }
+                break;
+            }
         }
     }
 
@@ -579,8 +692,9 @@ public class Horde : MonoBehaviour
     void Director(float dt)
     {
         float t = Game.I.RunTime;
-        int maxAlive = Mathf.Min(26 + (int)(t * 0.19f), 115);
-        float rate = 0.7f + t / 60f * 1.15f;   // gentle first minutes, relentless by the end
+        bool blood = Game.I.Stage == 2;
+        int maxAlive = Mathf.Min(26 + (int)(t * 0.19f) + (blood ? 12 : 0), blood ? 125 : 115);
+        float rate = (0.7f + t / 60f * 1.15f) * (blood ? 1.18f : 1f);   // gentle first minutes, relentless by the end
         spawnAcc += rate * dt;
         while (spawnAcc >= 1f && Alive.Count < maxAlive)
         {
@@ -591,7 +705,16 @@ public class Horde : MonoBehaviour
 
         if (beats == null)
         {
-            var list = new List<(float time, System.Action act)>
+            var list = blood ? new List<(float time, System.Action act)>
+            {
+                (75f, () => Ring(EType.Skeleton, 30, 11f, "BONE STORM")),
+                (150f, () => BossArrives(EType.BossColossus)),
+                (215f, () => Ring(EType.Ghost, 26, 10f, "WAILING HOUR")),
+                (290f, () => BossArrives(EType.BossWitch)),
+                (345f, () => Ring(EType.Mage, 10, 11f, "THE COVEN")),
+                (400f, () => BossArrives(EType.BossLich)),
+                (445f, () => Ring(EType.Brute, 8, 12f, "LAST STAND")),
+            } : new List<(float time, System.Action act)>
             {
                 (100f, () => Ring(EType.Zombie, 28, 11f, "THE DEAD RISE")),
                 (180f, () => BossArrives(EType.BossZombie)),
@@ -617,6 +740,11 @@ public class Horde : MonoBehaviour
     {
         float z = 1f, s = t > 40 ? 0.7f : 0, g = t > 110 ? 0.45f : 0, v = t > 200 ? 0.22f : 0, b = t > 250 ? 0.16f : 0;
         float m = t > 150 ? 0.16f : 0, pk = Spooky.On && t > 60 ? 0.35f : 0;
+        if (Game.I.Stage == 2)
+        {
+            // blood moon: skeletons from the first second, ghosts and mages early, brutes and vampires by mid-night
+            z = 0.8f; s = 0.9f; g = t > 35 ? 0.5f : 0; m = t > 60 ? 0.22f : 0; v = t > 100 ? 0.25f : 0; b = t > 150 ? 0.2f : 0;
+        }
         float r = UnityEngine.Random.value * (z + s + g + v + b + m + pk);
         if ((r -= m) < 0) return EType.Mage;
         if ((r -= pk) < 0) return EType.Pumpkin;

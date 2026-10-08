@@ -317,7 +317,25 @@ public class UI : MonoBehaviour
             StartCoroutine(Pulse(ev.transform));
             y -= 190;
         }
-        var play = Btn(s, "PLAY", new Vector2(.5f, 0), new Vector2(0, y - 10), new Vector2(720, 190), Toxic, Ink, () => g.StartRun(), 96);
+        // level picker: THE GRAVEYARD / BLOOD MOON (locked until the graveyard's three bosses fall)
+        for (int lv = 1; lv <= 2; lv++)
+        {
+            int L = lv;
+            bool locked = L == 2 && !g.Stage2Unlocked, sel = g.Stage == L;
+            Color acc = L == 2 ? Kit.Hex("#FF4D5E") : Toxic;
+            var tab = Btn(s, "", new Vector2(.5f, 0), new Vector2(L == 1 ? -185 : 185, y), new Vector2(350, 130),
+                sel ? acc : locked ? new Color(1, 1, 1, 0.06f) : new Color(1, 1, 1, 0.14f), Bone, () =>
+                {
+                    if (L == 2 && !g.Stage2Unlocked) { Banner("BEAT ALL 3 GRAVEYARD BOSSES  (" + g.L1BossesBeaten + " / 3)", Kit.Hex("#FF8A7A")); return; }
+                    g.SelectStage(L); ShowMenu();
+                }, 40);
+            Txt(tab.transform, locked ? "LOCKED" : "LEVEL " + L, 26, new Vector2(.5f, .5f), new Vector2(0, 30), sel ? Kit.A(Ink, 0.75f) : Kit.A(Bone, 0.6f), TextAnchor.MiddleCenter, 340);
+            Txt(tab.transform, Game.StageName(L), 38, new Vector2(.5f, .5f), new Vector2(0, -12), sel ? Ink : locked ? Kit.A(Bone, 0.45f) : Bone, TextAnchor.MiddleCenter, 340);
+            if (locked) Txt(tab.transform, "BOSSES " + g.L1BossesBeaten + " / 3", 24, new Vector2(.5f, .5f), new Vector2(0, -48), Kit.Hex("#FF8A7A"), TextAnchor.MiddleCenter, 340);
+            else if (L == 2 && g.Save.wins2 > 0) Txt(tab.transform, g.Save.wins2 + " CLEARED", 24, new Vector2(.5f, .5f), new Vector2(0, -48), sel ? Kit.A(Ink, 0.7f) : Gold, TextAnchor.MiddleCenter, 340);
+        }
+        y -= 165;
+        var play = Btn(s, g.Stage == 2 ? "PLAY  BLOOD MOON" : "PLAY", new Vector2(.5f, 0), new Vector2(0, y - 10), new Vector2(720, 190), g.Stage == 2 ? Kit.Hex("#FF4D5E") : Toxic, Ink, () => g.StartRun(), g.Stage == 2 ? 72 : 96);
         if (!Spooky.On) StartCoroutine(Pulse(play.transform));
         y -= 205;
         var shop = Btn(s, "", new Vector2(.5f, 0), new Vector2(-185, y), new Vector2(350, 130), new Color(1, 1, 1, 0.16f), Gold, ShowShop, 46);
@@ -428,7 +446,7 @@ public class UI : MonoBehaviour
     {
         var s = Screen();
         var g = Game.I;
-        Title(s, won ? "DAWN BREAKS!" : "YOU FELL", -260, 120, won ? Gold : Blood);
+        Title(s, won ? (g.Stage == 2 ? "BLOOD MOON SURVIVED!" : "DAWN BREAKS!") : "YOU FELL", -260, won && g.Stage == 2 ? 96 : 120, won ? Gold : Blood);
         Txt(s, won ? "You survived the night." : "The dead claim another keeper...", 36, new Vector2(.5f, 1), new Vector2(0, -370), new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter, 1000);
         string[] labels = { "SURVIVED", "KILLS", "LEVEL", "GOLD" };
         string[] vals = { Clock(time), kills.ToString(), level.ToString(), "+" + gold };
@@ -441,6 +459,13 @@ public class UI : MonoBehaviour
         }
         if (Spooky.On && Game.I.lastCandy > 0)
             Txt(s, "+" + Game.I.lastCandy + " CANDY", 44, new Vector2(.5f, 1), new Vector2(0, -985), Kit.Hex("#FF9A3C"));
+        if (g.JustUnlocked)
+        {
+            var nu = Txt(s, "NEW LEVEL UNLOCKED: BLOOD MOON", 44, new Vector2(.5f, 1), new Vector2(0, -1050), Kit.Hex("#FF4D5E"), TextAnchor.MiddleCenter, 1000);
+            Outline(nu, 2); StartCoroutine(Pulse(nu.transform));
+        }
+        else if (g.Stage == 1 && !g.Stage2Unlocked && g.L1BossesBeaten > 0)
+            Txt(s, "GRAVEYARD BOSSES BEATEN  " + g.L1BossesBeaten + " / 3   ·   BEAT ALL 3 TO UNLOCK LEVEL 2", 30, new Vector2(.5f, 1), new Vector2(0, -1050), Kit.Hex("#FF8A7A"), TextAnchor.MiddleCenter, 1000);
         float y = 640;
         if (canRevive)
         {
