@@ -10,6 +10,7 @@ public class UI : MonoBehaviour
     public static UI I;
     Canvas canvas; CanvasScaler scaler;
     RectTransform root, hud, screens, numbers;
+    public string Open = "";   // which full screen is showing, for the Android back button
     Font F => Kit.Font;
     static readonly Color Ink = Kit.Hex("#14111f"), Bone = Kit.Hex("#EDE6D6"), Toxic = Kit.Hex("#7CFFB2"), Blood = Kit.Hex("#FF4D6D"), Gold = Kit.Hex("#FFD166");
 
@@ -46,6 +47,7 @@ public class UI : MonoBehaviour
         vignette.color = new Color(1, 0, 0, 0); vignette.raycastTarget = false;
 
         BuildHud();
+        hud.gameObject.AddComponent<SafeArea>();   // notches and punch-hole cameras
         screens = Fill("screens", root);
 
         joyBase = (RectTransform)Img(root, Sprite.Create(Kit.Ring, new Rect(0, 0, 128, 128), new Vector2(.5f, .5f)), Vector2.zero, Vector2.zero, new Vector2(JoyRadius * 2.2f, JoyRadius * 2.2f)).transform;
@@ -268,10 +270,12 @@ public class UI : MonoBehaviour
         foreach (Transform c in screens) Destroy(c.gameObject);
         var s = Fill("screen", screens);
         if (dim) { var img = s.gameObject.AddComponent<Image>(); img.color = new Color(0.03f, 0.02f, 0.06f, 0.78f); }
-        return s;
+        // dim covers the whole display; the content sits inside the safe area
+        var safe = Fill("safe", s); safe.gameObject.AddComponent<SafeArea>();
+        return safe;
     }
 
-    public void CloseScreens() { foreach (Transform c in screens) Destroy(c.gameObject); }
+    public void CloseScreens() { foreach (Transform c in screens) Destroy(c.gameObject); Open = ""; }
 
     IEnumerator Pop(RectTransform r, float delay = 0)
     {
@@ -292,9 +296,10 @@ public class UI : MonoBehaviour
     {
         var s = Screen(false);
         var g = Game.I;
+        Open = "menu";
         // title block up top, buttons in a stack at the bottom, the middle left clear for the keeper
-        Kit.Scrim(s, true, 900, new Color(0.03f, 0.04f, 0.05f, 0.82f));
-        Kit.Scrim(s, false, 1000, new Color(0.03f, 0.04f, 0.05f, 0.88f));
+        Kit.Scrim(s.parent, true, 900, new Color(0.03f, 0.04f, 0.05f, 0.82f));
+        Kit.Scrim(s.parent, false, 1000, new Color(0.03f, 0.04f, 0.05f, 0.88f));
         var glow = Img(s, Fx.Glow, new Vector2(.5f, 1), new Vector2(0, -330), new Vector2(1100, 600));
         glow.color = Kit.A(Toxic, 0.16f);
         Title(s, "GRAVE", -210, 190, Bone);
@@ -354,6 +359,7 @@ public class UI : MonoBehaviour
     public void ShowCandyShop()
     {
         var s = Screen();
+        Open = "candy";
         var g = Game.I;
         Title(s, "CANDY SHOP", -200, 96, Kit.Hex("#FF9A3C"));
         Txt(s, g.Save.candy + " CANDY", 46, new Vector2(.5f, 1), new Vector2(0, -310), Kit.Hex("#FF9A3C"));
@@ -384,6 +390,7 @@ public class UI : MonoBehaviour
     public void ShowShop()
     {
         var s = Screen();
+        Open = "shop";
         var g = Game.I;
         Title(s, "CRYPT SHOP", -200, 90, Gold);
         var goldT = Txt(s, g.Save.gold + " GOLD", 44, new Vector2(.5f, 1), new Vector2(0, -300), Gold);
@@ -437,6 +444,7 @@ public class UI : MonoBehaviour
     public void ShowPause()
     {
         var s = Screen();
+        Open = "pause";
         Title(s, "PAUSED", -500, 120, Bone);
         Btn(s, "RESUME", new Vector2(.5f, .5f), new Vector2(0, 60), new Vector2(560, 160), Toxic, Ink, () => Game.I.Resume(), 64);
         Btn(s, "QUIT RUN", new Vector2(.5f, .5f), new Vector2(0, -150), new Vector2(560, 130), new Color(1, 1, 1, 0.14f), Bone, () => Game.I.EndRun(false), 46);
@@ -446,6 +454,7 @@ public class UI : MonoBehaviour
     {
         var s = Screen();
         var g = Game.I;
+        Open = "results";
         Title(s, won ? (g.Stage == 2 ? "BLOOD MOON SURVIVED!" : "DAWN BREAKS!") : "YOU FELL", -260, won && g.Stage == 2 ? 96 : 120, won ? Gold : Blood);
         Txt(s, won ? "You survived the night." : "The dead claim another keeper...", 36, new Vector2(.5f, 1), new Vector2(0, -370), new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter, 1000);
         string[] labels = { "SURVIVED", "KILLS", "LEVEL", "GOLD" };
@@ -473,8 +482,13 @@ public class UI : MonoBehaviour
             StartCoroutine(Pulse(rv.transform));
         }
         Btn(s, "PLAY AGAIN", new Vector2(.5f, 0), new Vector2(0, y), new Vector2(620, 160), Toxic, Ink, () => g.StartRun(), 64);
-        var share = Btn(s, "SHARE", new Vector2(.5f, 0), new Vector2(-165, y - 180), new Vector2(290, 120), new Color(1, 1, 1, 0.16f), Bone, () => { }, 46);
-        share.gameObject.AddComponent<ShareOnPress>().Text = () => g.ShareText();
+        if (Mobile.Native)
+            Btn(s, "SHARE", new Vector2(.5f, 0), new Vector2(-165, y - 180), new Vector2(290, 120), new Color(1, 1, 1, 0.16f), Bone, () => Mobile.Share(g.ShareText(), "Share your run"), 46);
+        else
+        {
+            var share = Btn(s, "SHARE", new Vector2(.5f, 0), new Vector2(-165, y - 180), new Vector2(290, 120), new Color(1, 1, 1, 0.16f), Bone, () => { }, 46);
+            share.gameObject.AddComponent<ShareOnPress>().Text = () => g.ShareText();
+        }
         Btn(s, "MENU", new Vector2(.5f, 0), new Vector2(165, y - 180), new Vector2(290, 120), new Color(1, 1, 1, 0.16f), Bone, () => g.GoMenu(), 46);
     }
 

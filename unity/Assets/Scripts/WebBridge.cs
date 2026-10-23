@@ -76,6 +76,8 @@ public class WebBridge : MonoBehaviour
     {
 #if UNITY_WEBGL && !UNITY_EDITOR
         GS_Vibrate(ms);
+#else
+        Mobile.Vibrate(ms);
 #endif
     }
 
