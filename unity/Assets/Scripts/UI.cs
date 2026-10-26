@@ -349,6 +349,10 @@ public class UI : MonoBehaviour
         Btn(s, g.Save.muted ? "SOUND OFF" : "SOUND ON", new Vector2(.5f, 0), new Vector2(185, y), new Vector2(350, 130), new Color(1, 1, 1, 0.16f), Bone, () => { g.ToggleMute(); ShowMenu(); }, 40);
         var hint = Txt(s, "Move with one thumb. Aiming is automatic.", 32, new Vector2(.5f, 0), new Vector2(0, y - 125), Kit.A(Bone, 0.75f), TextAnchor.MiddleCenter, 1000);
         Outline(hint, 2);
+        if (Mobile.Native && !Ads.AdFree && Ads.CanBuyRemoveAds)
+            Btn(s, "NO ADS  ·  " + Ads.RemoveAdsPrice, new Vector2(.5f, 0), new Vector2(Ads.PrivacyOptionsRequired ? -185 : 0, y - 240), new Vector2(350, 90), new Color(1, 1, 1, 0.1f), Gold, Ads.BuyRemoveAds, 30);
+        if (Mobile.Native && Ads.PrivacyOptionsRequired)
+            Btn(s, "PRIVACY", new Vector2(.5f, 0), new Vector2(Ads.AdFree || !Ads.CanBuyRemoveAds ? 0 : 185, y - 240), new Vector2(350, 90), new Color(1, 1, 1, 0.1f), Kit.A(Bone, 0.7f), Ads.ShowPrivacyOptions, 30);
     }
 
     IEnumerator Pulse(Transform t)
