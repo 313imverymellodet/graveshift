@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -349,10 +350,20 @@ public class UI : MonoBehaviour
         Btn(s, g.Save.muted ? "SOUND OFF" : "SOUND ON", new Vector2(.5f, 0), new Vector2(185, y), new Vector2(350, 130), new Color(1, 1, 1, 0.16f), Bone, () => { g.ToggleMute(); ShowMenu(); }, 40);
         var hint = Txt(s, "Move with one thumb. Aiming is automatic.", 32, new Vector2(.5f, 0), new Vector2(0, y - 125), Kit.A(Bone, 0.75f), TextAnchor.MiddleCenter, 1000);
         Outline(hint, 2);
-        if (Mobile.Native && !Ads.AdFree && Ads.CanBuyRemoveAds)
-            Btn(s, "NO ADS  ·  " + Ads.RemoveAdsPrice, new Vector2(.5f, 0), new Vector2(Ads.PrivacyOptionsRequired ? -185 : 0, y - 240), new Vector2(350, 90), new Color(1, 1, 1, 0.1f), Gold, Ads.BuyRemoveAds, 30);
-        if (Mobile.Native && Ads.PrivacyOptionsRequired)
-            Btn(s, "PRIVACY", new Vector2(.5f, 0), new Vector2(Ads.AdFree || !Ads.CanBuyRemoveAds ? 0 : 185, y - 240), new Vector2(350, 90), new Color(1, 1, 1, 0.1f), Kit.A(Bone, 0.7f), Ads.ShowPrivacyOptions, 30);
+        if (Mobile.Native)
+        {
+            // NO ADS / RESTORE (App Store only) / PRIVACY (EEA/UK only), spread across one row
+            var row = new System.Collections.Generic.List<(string label, float w, Color fg, Action act)>();
+            if (!Ads.AdFree && Ads.CanBuyRemoveAds) row.Add(("NO ADS  ·  " + Ads.RemoveAdsPrice, 330, Gold, Ads.BuyRemoveAds));
+            if (Ads.ShowRestoreButton) row.Add(("RESTORE", 230, Kit.A(Bone, 0.7f), Ads.RestorePurchases));
+            if (Ads.PrivacyOptionsRequired) row.Add(("PRIVACY", 230, Kit.A(Bone, 0.7f), Ads.ShowPrivacyOptions));
+            float x = -(row.Sum(b => b.w) + 20 * (row.Count - 1)) / 2;
+            foreach (var b in row)
+            {
+                Btn(s, b.label, new Vector2(.5f, 0), new Vector2(x + b.w / 2, y - 240), new Vector2(b.w, 90), new Color(1, 1, 1, 0.1f), b.fg, b.act, 28);
+                x += b.w + 20;
+            }
+        }
     }
 
     IEnumerator Pulse(Transform t)
