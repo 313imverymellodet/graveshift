@@ -67,6 +67,9 @@ public class Game : MonoBehaviour
     {
         I = this;
         Application.targetFrameRate = -1;
+        Mobile.Init();
+        Ads.Init();
+        Ads.Changed += () => { if (UI.I && UI.I.Open == "menu") UI.I.ShowMenu(); };
         QualitySettings.shadowDistance = 30f;
         QualitySettings.shadowCascades = 1;
         QualitySettings.shadowResolution = ShadowResolution.Medium;
@@ -542,7 +545,7 @@ public class Game : MonoBehaviour
         Persist();
         runKills = Horde.I.Kills;
         bool canRevive = !won && !revived && (WebBridge.AdsAvailable || Save.gold >= 60);
-        string label = WebBridge.AdsAvailable ? "REVIVE  (WATCH AD)" : "REVIVE  (60 GOLD)";
+        string label = WebBridge.AdsAvailable ? (Ads.AdFree ? "REVIVE  (FREE)" : "REVIVE  (WATCH AD)") : "REVIVE  (60 GOLD)";
         UI.I.ShowHud(false);
         UI.I.ShowResults(won, RunTime, runKills, Level, earned, canRevive, label);
         WebBridge.Gameplay(false);
@@ -607,11 +610,23 @@ public class Game : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P)) Pause();
         }
         else if (State == S.Paused && (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P))) Resume();
+        else if (Input.GetKeyDown(KeyCode.Escape)) Back();
 
         if (Dev && Input.GetKeyDown(KeyCode.L)) AddXp(Defs.XpForLevel(Level));
         if (Dev && Input.GetKeyDown(KeyCode.T)) RunTime += 60f;
         AdaptQuality();
     }
+
+    // Android back button outside a run: shop -> menu, results -> menu, menu -> home screen.
+    void Back()
+    {
+        if (State == S.Menu) { if (UI.I.Open != "menu") UI.I.ShowMenu(); else Mobile.MoveToBack(); }
+        else if ((State == S.Dead || State == S.Won) && UI.I.Open == "results") GoMenu();
+    }
+
+    // phone calls, notifications, the home button: never keep fighting in the background
+    void OnApplicationPause(bool p) { if (p) Pause(); }
+    void OnApplicationFocus(bool f) { if (!f && Mobile.Native) Pause(); }
 
     float qT, qFrames; int qLevel;
     void AdaptQuality()
